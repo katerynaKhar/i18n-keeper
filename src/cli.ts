@@ -4,6 +4,7 @@ import { relative } from 'node:path';
 import { existsSync } from 'node:fs';
 import { check } from './check.js';
 import { ParseError } from './formats/json.js';
+import { PhpParseError } from './formats/php.js';
 import {
   MemoryError,
   emptyMemory,
@@ -228,5 +229,6 @@ try {
   if (err instanceof ScanError) fail(err.message);
   if (err instanceof MemoryError) fail(err.message);
   if (err instanceof ParseError) fail(`Invalid JSON in ${err.file}\n  ${err.message}`);
+  if (err instanceof PhpParseError) fail(`Cannot parse ${err.file}\n  ${err.message}`);
   throw err;
 }

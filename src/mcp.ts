@@ -5,6 +5,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { check } from './check.js';
 import { ParseError } from './formats/json.js';
+import { PhpParseError } from './formats/php.js';
 import {
   MemoryError,
   emptyMemory,
@@ -118,16 +119,15 @@ function renderFindings(findings: Finding[], offset: number, total: number): str
   return [header, ...lines].join('\n');
 }
 
+function describeError(err: unknown): string {
+  if (err instanceof ScanError || err instanceof MemoryError) return err.message;
+  if (err instanceof ParseError) return `Invalid JSON in ${err.file}\n  ${err.message}`;
+  if (err instanceof PhpParseError) return `Cannot parse ${err.file}\n  ${err.message}`;
+  return err instanceof Error ? err.message : String(err);
+}
+
 function toolError(err: unknown) {
-  const message =
-    err instanceof ScanError || err instanceof MemoryError
-      ? err.message
-      : err instanceof ParseError
-        ? `Invalid JSON in ${err.file}\n  ${err.message}`
-        : err instanceof Error
-          ? err.message
-          : String(err);
-  return { isError: true, content: [{ type: 'text' as const, text: message }] };
+  return { isError: true, content: [{ type: 'text' as const, text: describeError(err) }] };
 }
 
 const server = new McpServer(

@@ -42,10 +42,12 @@ const PATTERNS: Record<string, PatternSpec> = {
     label: (m) => m[0],
   },
   // :name — Laravel. Off by default: it false-positives on prose like
-  // "Warning:Important". Enable per project once the format is known.
+  // "Warning:Important". Enabled automatically for PHP locale files.
+  // Laravel treats :name, :Name and :NAME as one placeholder rendered with
+  // different capitalisation, so they normalise to one label here.
   laravel: {
     re: /(?<![\w:]):([a-zA-Z][\w]*)/g,
-    label: (m) => `:${m[1]}`,
+    label: (m) => `:${m[1]!.toLowerCase()}`,
   },
 };
 

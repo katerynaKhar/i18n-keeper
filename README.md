@@ -1,8 +1,9 @@
 # i18n-keeper
 
-Deterministic linter for locale files, as a CLI and an MCP server. No LLM, no
-network, no API key — every finding is mechanically verifiable, which is the
-point: you can trust the report in languages you do not read.
+Deterministic linter for JSON and Laravel PHP locale files, as a CLI and an MCP
+server. No LLM, no network, no API key — every finding is mechanically
+verifiable, which is the point: you can trust the report in languages you do not
+read.
 
 ```bash
 npx i18n-keeper check
@@ -97,17 +98,49 @@ Detected by default: `{{name}}` (mustache/i18next), `{name}` and
 Patterns are applied most-specific first and each match is masked out, so
 `{{name}}` is never also counted as `{name}`.
 
-Laravel's `:name` is available via `--syntax` but off by default — it
-false-positives on prose like `Warning:Important`.
+Laravel's `:name` is off by default in JSON projects, where it false-positives
+on prose like `Warning:Important`; it turns on automatically when the project
+has PHP language files, and `--syntax` overrides the choice either way.
 
-## Layouts
+## Formats and layouts
 
-Both are auto-detected:
+JSON and Laravel-style PHP language files, in either layout, auto-detected:
 
 ```
 locales/en.json              locales/en/common.json
 locales/fr.json              locales/en/shop/pricing.json  -> shop.pricing.price
+
+lang/en.php                  lang/en/messages.php          -> messages.cart.total
+lang/fr.php                  lang/en/validation.php        -> validation.max.string
 ```
+
+Both can coexist: a locale directory holding `messages.php` next to a
+`lang/en.json` is read as one keyspace. When PHP files are present, Laravel's
+`:name` interpolation is enabled automatically, and `:name`, `:Name` and
+`:NAME` are treated as one placeholder because Laravel renders them from the
+same replacement.
+
+### PHP files are parsed, never executed
+
+Locale files come from the repository being linted. Running them would mean
+executing untrusted code, and would force PHP onto every machine and CI runner
+using the linter. So `i18n-keeper` ships its own parser for the
+`<?php return [...];` subset — literal arrays, both quote styles with full
+escape handling, `array()`, integer and string keys, and all three comment
+styles.
+
+Anything outside that subset — variables, interpolation, concatenation,
+function calls, heredocs, statements after the return — is a clear error naming
+the line, not a silent guess:
+
+```
+Cannot parse lang/fr.php
+  Constants and function calls are not supported (line 4)
+```
+
+The parser is verified differentially against PHP itself: `npm run test:php`
+reads every fixture with the real interpreter and compares the two results
+structurally. PHP is a development dependency for that test only.
 
 ## Usage
 
@@ -173,7 +206,7 @@ without parsing the table.
 
 ## Not yet
 
-Machine translation of the stale/missing set, PHP / `.po` / YAML formats, CLDR
+Machine translation of the stale/missing set, `.po` and YAML formats, CLDR
 plural-category validation, glossary and do-not-translate enforcement, and
 length-overflow checks. The core is a plain library, so all of those are
 additive.
@@ -183,9 +216,12 @@ additive.
 ```bash
 npm install
 npm run build
-npm run demo         # CLI against the demo fixture
-npm run walkthrough  # the whole memory/stale lifecycle, step by step
-npm run smoke        # drives the MCP server as a real client would
+npm run demo           # CLI against the JSON demo fixture
+npm run demo:laravel   # CLI against the Laravel fixture
+npm run walkthrough    # the whole memory/stale lifecycle, step by step
+npm run smoke          # drives the MCP server as a real client would
+npm run test:php       # our PHP parser vs the real interpreter (needs php)
+npm run test:laravel   # placeholder casing, flat PHP layout, parse errors
 ```
 
 MIT.

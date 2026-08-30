@@ -1,0 +1,26 @@
+<?php
+
+return [
+    'single_plain' => 'plain',
+    'single_escaped_quote' => 'it\'s',
+    'single_backslash' => 'a\\b',
+    'single_fake_escape' => 'not \n a newline',
+    'double_newline' => "line1\nline2",
+    'double_tab' => "a\tb",
+    'double_cr' => "a\rb",
+    'double_vertical' => "a\vb",
+    'double_formfeed' => "a\fb",
+    'double_escape_char' => "a\eb",
+    'double_quote' => "say \"hi\"",
+    'double_backslash' => "a\\b",
+    'double_dollar' => "cost \$5",
+    'double_lone_dollar' => "100$ total",
+    'hex' => "\x41\x42",
+    'octal' => "\101\102",
+    'unicode_short' => "\u{e9}",
+    'unicode_long' => "\u{1F600}",
+    'unknown_escape' => "a\qb",
+    'colon_placeholder' => 'Hello :name, you have :Count messages',
+    'windows_path' => 'C:\\Windows\\System32',
+    'empty' => '',
+];

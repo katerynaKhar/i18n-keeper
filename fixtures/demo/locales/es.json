@@ -1,0 +1,27 @@
+{
+  "nav": {
+    "home": "Inicio",
+    "cart": "Carrito",
+    "account": "Mi cuenta",
+    "subscribe": "Suscribirse al boletín"
+  },
+  "cart": {
+    "empty": "Tu carrito está vacío",
+    "items": "{{count}} artículos en el carrito",
+    "total": "Total: {{amount}}",
+    "checkout": "Ir a pagar",
+    "removed": "{{name}} se ha eliminado"
+  },
+  "form": {
+    "email": "Email",
+    "submit": "Enviar",
+    "error": "Introduce una dirección válida:",
+    "required": "Este campo es obligatorio"
+  },
+  "order": {
+    "confirm": "Confirmar <0>pedido</0> ahora",
+    "thanks": "¡Gracias, {{name}}!",
+    "id": "Pedido %s",
+    "legacy": "Texto antiguo de una versión anterior"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "i18n-keeper",
+  "version": "0.0.1",
+  "description": "Deterministic i18n linter: missing keys, orphans and broken placeholders across locale files.",
+  "type": "module",
+  "bin": { "i18n-keeper": "dist/cli.js" },
+  "files": ["dist"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc",
+    "demo": "node dist/cli.js check fixtures/demo"
+  },
+  "keywords": ["i18n", "l10n", "lint", "locales", "translation"],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}

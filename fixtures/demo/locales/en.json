@@ -1,0 +1,26 @@
+{
+  "nav": {
+    "home": "Home",
+    "cart": "Cart",
+    "account": "My account",
+    "subscribe": "Subscribe to newsletter"
+  },
+  "cart": {
+    "empty": "Your cart is empty",
+    "items": "{{count}} items in cart",
+    "total": "Total: {{amount}}",
+    "checkout": "Proceed to checkout",
+    "removed": "{{name}} was removed"
+  },
+  "form": {
+    "email": "Email",
+    "submit": "Send",
+    "error": "Enter a valid address:",
+    "required": "This field is required"
+  },
+  "order": {
+    "confirm": "Confirm <0>order</0> now",
+    "thanks": "Thanks, {{name}}!",
+    "id": "Order %s"
+  }
+}

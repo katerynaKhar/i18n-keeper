@@ -1,0 +1,22 @@
+{
+  "nav": {
+    "home": "Strona główna",
+    "cart": "Koszyk",
+    "account": "Moje konto"
+  },
+  "cart": {
+    "empty": "Twój koszyk jest pusty",
+    "items": "{{count}} produktów",
+    "total": "Razem: {{amount}}",
+    "checkout": ""
+  },
+  "form": {
+    "email": "Email",
+    "submit": "Wyślij"
+  },
+  "order": {
+    "confirm": "Potwierdź <0>zamówienie</0>",
+    "thanks": "Dziękujemy, {{imie}}!",
+    "id": "Zamówienie"
+  }
+}

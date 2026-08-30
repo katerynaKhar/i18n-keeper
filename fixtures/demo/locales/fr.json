@@ -1,0 +1,25 @@
+{
+  "nav": {
+    "home": "Accueil",
+    "cart": "Panier",
+    "account": "Mon compte",
+    "subscribe": "S'abonner à la newsletter"
+  },
+  "cart": {
+    "empty": "Votre panier est vide",
+    "items": "{{count}} articles dans le panier",
+    "total": "Total :",
+    "checkout": "Passer à la caisse",
+    "removed": "{{name}} a été supprimé"
+  },
+  "form": {
+    "email": "Email",
+    "submit": "Envoyer",
+    "error": "Saisissez une adresse valide :"
+  },
+  "order": {
+    "confirm": "Confirmer la <0>commande</0>",
+    "thanks": "Merci, {{name}} !",
+    "id": "Commande %s"
+  }
+}

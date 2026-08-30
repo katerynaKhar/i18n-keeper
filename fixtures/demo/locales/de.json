@@ -1,0 +1,26 @@
+{
+  "nav": {
+    "home": { "label": "Startseite" },
+    "cart": "Warenkorb",
+    "account": "Mein Konto",
+    "subscribe": "Newsletter abonnieren"
+  },
+  "cart": {
+    "empty": "Ihr Warenkorb ist leer",
+    "items": "{{count}} Artikel im Warenkorb",
+    "total": "Gesamt: {{amount}}",
+    "checkout": "Zur Kasse",
+    "removed": "{{name}} wurde entfernt"
+  },
+  "form": {
+    "email": "E-Mail",
+    "submit": "Senden",
+    "error": "Geben Sie eine gültige Adresse ein:",
+    "required": "Dieses Feld ist erforderlich"
+  },
+  "order": {
+    "confirm": "<0>Bestellung</0> jetzt bestätigen",
+    "thanks": "Danke, {{name}}!",
+    "id": "Bestellung %s"
+  }
+}

@@ -47,8 +47,8 @@ writeFileSync(
 
 const config = detectProject(ROOT);
 const glossary = loadGlossary(glossaryPath(config.root));
-const source = loadBundle(config, config.sourceLocale);
 const limits = loadLimits(limitsPath(config.root));
+const source = loadBundle(config, config.sourceLocale);
 const report = check(config, null, glossary, limits);
 const jobs = collectJobs(config, report.findings, source, glossary, limits, ['fr']);
 
@@ -79,8 +79,7 @@ for (const [job, text, label] of cases) {
   );
 }
 
-// A stub standing in for client.messages.parse. First attempt deliberately
-// breaks two rules; the retry fixes one of them and not the other.
+/** Stands in for client.messages.parse. */
 function stubClient(scenario) {
   let call = 0;
   return {
@@ -88,11 +87,15 @@ function stubClient(scenario) {
       async parse(params) {
         call++;
         const payload = JSON.parse(params.messages[0].content);
-        const translations = payload.strings.map((spec) => {
-          const answer = scenario(spec, call);
-          return { id: spec.id, text: answer };
-        });
-        return { stop_reason: 'end_turn', parsed_output: { translations } };
+        return {
+          stop_reason: 'end_turn',
+          parsed_output: {
+            translations: payload.strings.map((spec) => ({
+              id: spec.id,
+              text: scenario(spec, call),
+            })),
+          },
+        };
       },
     },
   };
@@ -102,7 +105,7 @@ const FIRST = {
   'Your cart is empty': 'Votre chariot est vide', // breaks the glossary
   'Total: {{amount}}': 'Total :', // drops the placeholder
   'Proceed to checkout': 'Passer à la caisse',
-  Subscribe: "S'abonner à la newsletter", // 25 columns, limit 12
+  Subscribe: "S'abonner à la newsletter", // too wide
 };
 const RETRY = {
   'Your cart is empty': 'Votre panier est vide', // fixed
@@ -111,7 +114,7 @@ const RETRY = {
 };
 
 console.log('\n=== runTranslation with retry ===');
-const proposals = await runTranslation(config, jobs, glossary, {
+const run = await runTranslation(config, jobs, glossary, {
   model: 'stub',
   effort: 'medium',
   batchSize: 10,
@@ -120,15 +123,15 @@ const proposals = await runTranslation(config, jobs, glossary, {
     console.log(`  request: ${locale}, ${size} strings${attempt > 1 ? ' (retry)' : ''}`),
 });
 
-for (const p of proposals) {
+console.log(`  aborted: ${run.aborted ?? 'no'}`);
+for (const p of run.proposals) {
   console.log(`  ${(p.accepted ? 'accept' : 'REJECT').padEnd(7)} ${p.key.padEnd(16)} ${p.value}`);
   for (const r of p.rejections) console.log(`          ! ${r}`);
 }
 
 console.log('\n=== applyProposals writes only the accepted ones ===');
-const applied = applyProposals(config, source, proposals);
+const applied = applyProposals(config, source, run.proposals);
 console.log(`  written ${applied.written}, files ${applied.files.length}`);
-console.log('  fr.json now:');
 console.log(
   readFileSync(`${ROOT}/locales/fr.json`, 'utf8')
     .split('\n')
@@ -137,7 +140,7 @@ console.log(
     .trimEnd(),
 );
 
-console.log('\n=== a refusal is reported, not written ===');
+console.log('\n=== a refusal is per batch: reported, and the run continues ===');
 const refusing = {
   messages: {
     async parse() {
@@ -145,12 +148,32 @@ const refusing = {
     },
   },
 };
-const refused = await runTranslation(config, jobs.slice(0, 1), glossary, {
+const refusedRun = await runTranslation(config, jobs.slice(0, 1), glossary, {
   model: 'stub',
   effort: 'medium',
   batchSize: 10,
   client: refusing,
 });
-for (const p of refused) console.log(`  ${p.accepted ? 'accept' : 'REJECT'}  ${p.rejections[0]}`);
+for (const p of refusedRun.proposals) {
+  console.log(`  ${p.accepted ? 'accept' : 'REJECT'}  ${p.rejections[0]}`);
+}
+console.log(`  aborted: ${refusedRun.aborted ?? 'no'}`);
+
+console.log('\n=== anything else stops the run instead of blaming every string ===');
+const broken = {
+  messages: {
+    async parse() {
+      throw new Error('Could not resolve authentication method');
+    },
+  },
+};
+const abortedRun = await runTranslation(config, jobs, glossary, {
+  model: 'stub',
+  effort: 'medium',
+  batchSize: 10,
+  client: broken,
+});
+console.log(`  proposals: ${abortedRun.proposals.length} (nothing blamed on the local checks)`);
+console.log(`  aborted:   ${abortedRun.aborted}`);
 
 rmSync(ROOT, { recursive: true, force: true });

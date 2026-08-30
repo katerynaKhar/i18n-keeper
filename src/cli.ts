@@ -304,13 +304,12 @@ try {
         `Sending ${jobs.length} string${jobs.length === 1 ? '' : 's'} ` +
           `(${locales.join(', ')}) to ${values.model ?? DEFAULT_MODEL} at effort ${effort}.`,
         total > cap ? `${total - cap} more are waiting; raise --cap to include them.` : '',
-        '',
       ]
         .filter(Boolean)
-        .join('\n'),
+        .join('\n') + '\n',
     );
 
-    const proposals = await runTranslation(config, jobs, glossary, {
+    const run = await runTranslation(config, jobs, glossary, {
       model: values.model ?? DEFAULT_MODEL,
       effort: effort as 'low' | 'medium' | 'high' | 'xhigh' | 'max',
       batchSize,
@@ -321,9 +320,11 @@ try {
       },
     });
 
+    const proposals = run.proposals;
+
     if (values.json) {
-      process.stdout.write(`${JSON.stringify(proposals, null, 2)}\n`);
-      process.exit(proposals.some((p) => !p.accepted) ? 1 : 0);
+      process.stdout.write(`${JSON.stringify(run, null, 2)}\n`);
+      process.exit(run.aborted || proposals.some((p) => !p.accepted) ? 1 : 0);
     }
 
     const accepted = proposals.filter((p) => p.accepted);
@@ -343,9 +344,19 @@ try {
       }
     }
 
-    process.stdout.write(
-      `\n${accepted.length} accepted, ${rejected.length} rejected by the local checks\n`,
-    );
+    process.stdout.write(`\n${accepted.length} accepted, ${rejected.length} rejected\n`);
+
+    // An error that is not a content refusal stopped the run before the checks
+    // could say anything, so it must not be reported as a rejection.
+    if (run.aborted) {
+      const hint = /authentication|api[ _-]?key|credential|unauthor/i.test(run.aborted)
+        ? '\nSet ANTHROPIC_API_KEY, or sign in with `ant auth login`.'
+        : '';
+      fail(
+        `Translation stopped: ${run.aborted}\n` +
+          `${jobs.length - proposals.length} of ${jobs.length} strings were never attempted.${hint}`,
+      );
+    }
 
     if (!values.write) {
       process.stdout.write('Nothing written. Pass --write to apply the accepted ones.\n');

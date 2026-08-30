@@ -482,6 +482,11 @@ rewritten.
 
 Exit code is 1 whenever anything was rejected, so a pipeline notices.
 
+A refusal applies to one batch and the run carries on. Anything else — no
+credentials, a rate limit, a dropped connection — will hit every remaining
+batch identically, so the run stops and says how many strings were never
+attempted. Those are not reported as rejections: the checks never saw them.
+
 ### Cost and credentials
 
 Needs `ANTHROPIC_API_KEY`, or a profile from `ant auth login`. Defaults to

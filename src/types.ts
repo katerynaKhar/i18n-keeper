@@ -15,6 +15,9 @@ export const RULE_IDS = [
   'plural_missing_category',
   'plural_extra_category',
   'plural_selector_lost',
+  'dnt_violation',
+  'glossary_violation',
+  'inconsistent_translation',
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -37,6 +40,11 @@ export const DEFAULT_RULES: Record<RuleId, RuleSetting> = {
   plural_missing_category: 'warning',
   plural_extra_category: 'warning',
   plural_selector_lost: 'warning',
+  dnt_violation: 'warning',
+  glossary_violation: 'warning',
+  // Reusing one wording for a repeated source string is often deliberate, so
+  // this is opt-in rather than noise by default.
+  inconsistent_translation: 'off',
 };
 
 export interface Finding {

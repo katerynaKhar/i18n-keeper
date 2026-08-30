@@ -4,6 +4,12 @@ import { relative } from 'node:path';
 import { existsSync } from 'node:fs';
 import { check } from './check.js';
 import { ParseError } from './formats/json.js';
+import {
+  GlossaryError,
+  glossaryPath,
+  loadGlossary,
+  type Glossary,
+} from './glossary.js';
 import { PhpParseError } from './formats/php.js';
 import {
   MemoryError,
@@ -33,6 +39,8 @@ Options
   --locale <locale>     limit to this locale (repeatable)
   --memory <file>       translation memory (default: .i18n/memory.json)
   --no-memory           ignore the memory; disables stale detection
+  --glossary <file>     glossary (default: .i18n/glossary.json)
+  --no-glossary         ignore the glossary
 
 check
   --rule <rule>         only report this rule (repeatable)
@@ -63,6 +71,8 @@ const { values, positionals } = (() => {
         rule: { type: 'string', multiple: true },
         memory: { type: 'string' },
         'no-memory': { type: 'boolean' },
+        glossary: { type: 'string' },
+        'no-glossary': { type: 'boolean' },
         'ignore-identical': { type: 'string' },
         syntax: { type: 'string' },
         origin: { type: 'string' },
@@ -115,6 +125,14 @@ if (origin !== 'human' && origin !== 'machine') {
   fail('--origin expects "human" or "machine"');
 }
 
+/** An explicit --glossary must exist; the default path is simply optional. */
+function openGlossary(config: Config): { glossary: Glossary | null; file: string } {
+  const file = glossaryPath(config.root, values.glossary);
+  if (values['no-glossary']) return { glossary: null, file };
+  if (values.glossary && !existsSync(file)) fail(`Glossary file not found: ${file}`);
+  return { glossary: loadGlossary(file), file };
+}
+
 /** An explicit --memory must exist; the default path is simply optional. */
 function openMemory(config: Config): { memory: Memory | null; file: string } {
   const file = memoryPath(config.root, values.memory);
@@ -136,6 +154,7 @@ try {
   if (command === 'scan') {
     const { layout, locales } = listLocales(config.localesDir);
     const { memory, file } = openMemory(config);
+    const glossaryInfo = openGlossary(config);
     const summary = {
       localesDir: config.localesDir,
       layout,
@@ -143,6 +162,7 @@ try {
       locales,
       placeholderSyntaxes: config.placeholderSyntaxes,
       memory: memory ? file : null,
+      glossary: glossaryInfo.glossary ? glossaryInfo.file : null,
     };
     if (values.json) {
       process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
@@ -155,6 +175,11 @@ try {
           `locales      ${summary.locales.join(', ')}`,
           `placeholders ${summary.placeholderSyntaxes.join(', ')}`,
           `memory       ${memory ? relative(config.root, file) : 'none'}`,
+          `glossary     ${
+            glossaryInfo.glossary
+              ? `${relative(config.root, glossaryInfo.file)} (${glossaryInfo.glossary.terms.length} terms, ${glossaryInfo.glossary.doNotTranslate.length} verbatim)`
+              : 'none'
+          }`,
           '',
         ].join('\n'),
       );
@@ -202,7 +227,8 @@ try {
   }
 
   const { memory } = openMemory(config);
-  const report = check(config, memory);
+  const { glossary } = openGlossary(config);
+  const report = check(config, memory, glossary);
   if (localeFilter.size > 0 || ruleFilter.size > 0) {
     report.findings = report.findings.filter(
       (f) =>
@@ -228,6 +254,7 @@ try {
 } catch (err) {
   if (err instanceof ScanError) fail(err.message);
   if (err instanceof MemoryError) fail(err.message);
+  if (err instanceof GlossaryError) fail(err.message);
   if (err instanceof ParseError) fail(`Invalid JSON in ${err.file}\n  ${err.message}`);
   if (err instanceof PhpParseError) fail(`Cannot parse ${err.file}\n  ${err.message}`);
   throw err;

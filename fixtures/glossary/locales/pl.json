@@ -1,0 +1,19 @@
+{
+  "cart": {
+    "title": "Twój koszyk",
+    "empty": "Twój wózek jest pusty",
+    "add": "Dodaj do koszyka"
+  },
+  "checkout": {
+    "start": "Przejdź do kasy",
+    "secure": "Bezpieczna płatność obsługiwana przez Acme Pay"
+  },
+  "auth": {
+    "signin": "Zaloguj się przez Github",
+    "oauth": "Używamy OAuth, aby chronić Twoje konto"
+  },
+  "misc": {
+    "save": "Zapisz",
+    "saveDraft": "Zapisz"
+  }
+}

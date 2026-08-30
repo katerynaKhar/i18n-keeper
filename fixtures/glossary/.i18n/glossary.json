@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "doNotTranslate": [
+    "Acme",
+    "GitHub",
+    "OAuth"
+  ],
+  "terms": [
+    {
+      "source": "cart",
+      "targets": {
+        "fr": [
+          "panier"
+        ],
+        "pl": [
+          "koszyk"
+        ],
+        "ru": [
+          "корзин"
+        ],
+        "ja": [
+          "カート"
+        ]
+      }
+    },
+    {
+      "source": "checkout",
+      "targets": {
+        "fr": [
+          "caisse",
+          "paiement"
+        ],
+        "pl": [
+          "kasa",
+          "kasy"
+        ]
+      }
+    }
+  ]
+}

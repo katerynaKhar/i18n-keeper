@@ -42,6 +42,9 @@ errors
 | `plural_missing_category` | warning | Plural lacks a form the target language requires |
 | `plural_extra_category` | warning | Plural branch the target language never selects |
 | `plural_selector_lost` | warning | Laravel `a|b` selection flattened to one form |
+| `dnt_violation` | warning | A do-not-translate token did not survive |
+| `glossary_violation` | warning | A glossary term rendered with an unapproved word |
+| `inconsistent_translation` | off | One source string translated two different ways |
 
 Errors break at runtime. Warnings only look bad — an outdated translation still
 renders, so `stale` is a warning even though it is the most interesting rule
@@ -92,6 +95,64 @@ the command says how many entries it deliberately left stale.
 **A hand-edited translation is not called stale.** If the target no longer
 matches what the memory recorded, someone already touched it and we cannot claim
 it is outdated — so the rule stays quiet rather than guessing.
+
+## Glossary and do-not-translate
+
+Translating one string well is easy. Keeping one word rendered the same way
+across three thousand keys, several translators and two years is the part that
+drifts — and it is checkable without knowing the language.
+
+`.i18n/glossary.json`, committed alongside the memory:
+
+```json
+{
+  "version": 1,
+  "doNotTranslate": ["Acme", "GitHub", "OAuth"],
+  "terms": [
+    {
+      "source": "cart",
+      "targets": {
+        "fr": ["panier"],
+        "pl": ["koszyk"],
+        "ru": ["корзин"],
+        "ja": ["カート"]
+      }
+    }
+  ]
+}
+```
+
+A term is only checked in strings whose **source** actually contains it, and
+only for locales the entry lists. Anything you have not defined is not judged.
+
+```
+pl  cart.empty       glossary_violation  "cart" should be "koszyk"
+pl  auth.signin      dnt_violation       GitHub must stay verbatim
+ja  cart.add         glossary_violation  "cart" should be "カート"
+```
+
+### Matching is built for inflected languages
+
+Demanding a literal substring would fire on every correctly translated Slavic
+string, so matching is **prefix by default**: a term written `koszyk` accepts
+`koszyka`, and `корзин` accepts `корзина`, `корзину` and `корзине`. Write the
+stem, not the dictionary form. Per entry, `"match"` can be `"exact"` or
+`"substring"` instead, and `"caseSensitive"` can be turned on.
+
+A term still has to start a word, so `cart` does not match `Uncartlike`. That
+check is skipped for scripts written without spaces — Japanese, Chinese, Thai,
+Khmer, Lao, Burmese — where a term is normally surrounded by other letters and a
+boundary test would never match at all.
+
+Do-not-translate tokens are compared **case-sensitively**, because that is the
+whole point of a brand name: `Github` is reported where `GitHub` was expected.
+
+### Consistency without a glossary
+
+`inconsistent_translation` needs no configuration: it reports one source string
+that received two different translations within a locale. Reusing a wording is
+often deliberate, so it is off until asked for with `--rule
+inconsistent_translation`.
 
 ## Plural forms
 
@@ -195,6 +256,8 @@ i18n-keeper sync  [path]    record current translations in the memory
 --locale <locale>           limit to this locale (repeatable)
 --memory <file>             translation memory (default: .i18n/memory.json)
 --no-memory                 ignore the memory; disables stale detection
+--glossary <file>           glossary (default: .i18n/glossary.json)
+--no-glossary               ignore the glossary
 
 check
 --rule <rule>               only report this rule, enabling it if off (repeatable)
@@ -247,9 +310,9 @@ without parsing the table.
 
 ## Not yet
 
-Machine translation of the stale/missing set, `.po` and YAML formats, glossary
-and do-not-translate enforcement, and length-overflow checks. The core is a
-plain library, so all of those are additive.
+Machine translation of the stale/missing set, `.po` and YAML formats, and
+length-overflow checks. The core is a plain library, so all of those are
+additive.
 
 ## Development
 
@@ -263,7 +326,9 @@ npm run smoke          # drives the MCP server as a real client would
 npm run test:php       # our PHP parser vs the real interpreter (needs php)
 npm run test:laravel   # placeholder casing, flat PHP layout, parse errors
 npm run test:plurals   # ICU scanner and CLDR category resolution
+npm run test:glossary  # term matching across scripts, and glossary errors
 npm run demo:plurals   # five locales with one, two, four and six plural forms
+npm run demo:glossary  # inflection, Cyrillic stems, CJK and brand names
 ```
 
 MIT.

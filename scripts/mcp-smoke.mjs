@@ -55,6 +55,20 @@ await call('i18n_check', { noMemory: true, rule: ['stale'] }, 'check with noMemo
 await call('i18n_sync', { force: true }, 'sync --force accepts everything');
 await call('i18n_check', { rule: ['stale'] }, 'check: nothing stale again');
 
+// The glossary fixture is read-only and comes with .i18n/glossary.json.
+async function glossaryCall(args, label) {
+  const res = await client.callTool({
+    name: 'i18n_check',
+    arguments: { path: 'fixtures/glossary', ...args },
+  });
+  console.log(`\n=== ${label} ===`);
+  for (const c of res.content ?? []) if (c.type === 'text') console.log(c.text);
+  return res;
+}
+
+await glossaryCall({ rule: ['glossary_violation', 'dnt_violation'] }, 'glossary via MCP');
+await glossaryCall({ noGlossary: true }, 'noGlossary silences the term rules');
+
 await call('i18n_check', { memory: 'nope.json' }, 'error: missing explicit memory');
 await call('i18n_check', { rule: ['not_a_rule'] }, 'error: bad rule');
 

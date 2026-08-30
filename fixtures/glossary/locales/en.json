@@ -1,0 +1,19 @@
+{
+  "cart": {
+    "title": "Your cart",
+    "empty": "Your cart is empty",
+    "add": "Add to cart"
+  },
+  "checkout": {
+    "start": "Proceed to checkout",
+    "secure": "Secure checkout powered by Acme Pay"
+  },
+  "auth": {
+    "signin": "Sign in with GitHub",
+    "oauth": "We use OAuth to keep your account safe"
+  },
+  "misc": {
+    "save": "Save",
+    "saveDraft": "Save"
+  }
+}

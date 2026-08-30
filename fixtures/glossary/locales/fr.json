@@ -1,0 +1,19 @@
+{
+  "cart": {
+    "title": "Votre panier",
+    "empty": "Votre panier est vide",
+    "add": "Ajouter au panier"
+  },
+  "checkout": {
+    "start": "Passer à la caisse",
+    "secure": "Paiement sécurisé par Acme Pay"
+  },
+  "auth": {
+    "signin": "Se connecter avec GitHub",
+    "oauth": "Nous utilisons OAuth pour protéger votre compte"
+  },
+  "misc": {
+    "save": "Enregistrer",
+    "saveDraft": "Sauvegarder"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "cart": {
+    "title": "カート",
+    "empty": "カートは空です",
+    "add": "買い物かごに追加"
+  },
+  "checkout": {
+    "start": "お支払いに進む",
+    "secure": "Acme Pay による安全なお支払い"
+  },
+  "auth": {
+    "signin": "GitHub でサインイン",
+    "oauth": "アカウントを保護するために OAuth を使用しています"
+  },
+  "misc": {
+    "save": "保存",
+    "saveDraft": "保存"
+  }
+}

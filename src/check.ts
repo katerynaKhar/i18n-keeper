@@ -1,3 +1,9 @@
+import {
+  containsTerm,
+  expectationsFor,
+  missingVerbatim,
+  type Glossary,
+} from './glossary.js';
 import { judge, type Memory } from './memory.js';
 import { diffPlaceholders, extractPlaceholders } from './placeholders.js';
 import {
@@ -69,6 +75,7 @@ function checkLocale(
   target: LocaleBundle,
   findings: Finding[],
   memory: Memory | null,
+  glossary: Glossary | null,
 ): LocaleStat {
   const before = findings.length;
   const ignore = new Set(config.ignoreIdentical.map((s) => s.toLowerCase()));
@@ -87,6 +94,11 @@ function checkLocale(
   let orphan = 0;
   let stale = 0;
   let notApplicable = 0;
+
+  // Only collected when the rule is on: one map per locale of source string ->
+  // the distinct translations it received.
+  const trackWording = config.rules.inconsistent_translation !== 'off';
+  const wordings = new Map<string, Map<string, string>>();
 
   for (const [key, sourceLeaf] of source.leaves) {
     const targetLeaf = target.leaves.get(key);
@@ -137,6 +149,33 @@ function checkLocale(
     if (extra.length > 0) {
       push(findings, config, 'placeholder_extra', target.locale, key, targetLeaf.file,
         `${extra.join(', ')} not in source`);
+    }
+
+    if (glossary) {
+      const lost = missingVerbatim(glossary, sourceLeaf.value, targetLeaf.value);
+      if (lost.length > 0) {
+        push(findings, config, 'dnt_violation', target.locale, key, targetLeaf.file,
+          `${lost.join(', ')} must stay verbatim`);
+      }
+
+      for (const { term, accepted } of expectationsFor(glossary, target.locale, sourceLeaf.value)) {
+        const satisfied = accepted.some((form) =>
+          containsTerm(targetLeaf.value, form, term.match, term.caseSensitive),
+        );
+        if (!satisfied) {
+          push(findings, config, 'glossary_violation', target.locale, key, targetLeaf.file,
+            `"${term.source}" should be ${accepted.map((f) => `"${f}"`).join(' or ')}`);
+        }
+      }
+    }
+
+    if (trackWording && HAS_LETTER.test(sourceLeaf.value) && sourceLeaf.value.length >= 4) {
+      let variants = wordings.get(sourceLeaf.value);
+      if (!variants) {
+        variants = new Map();
+        wordings.set(sourceLeaf.value, variants);
+      }
+      if (!variants.has(targetLeaf.value)) variants.set(targetLeaf.value, key);
     }
 
     checkIcuCategories(
@@ -205,6 +244,14 @@ function checkLocale(
     }
   }
 
+  for (const [sourceValue, variants] of wordings) {
+    if (variants.size < 2) continue;
+    const keys = [...variants.values()];
+    push(findings, config, 'inconsistent_translation', target.locale, keys[0]!,
+      target.files[0] ?? target.locale,
+      `"${truncate(sourceValue)}" is translated ${variants.size} ways, also at ${keys.slice(1).join(', ')}`);
+  }
+
   const added = findings.slice(before);
   const applicable = source.leaves.size - notApplicable;
 
@@ -239,7 +286,11 @@ function truncate(value: string, max = 40): string {
 
 const SEVERITY_ORDER = { error: 0, warning: 1 } as const;
 
-export function check(config: Config, memory: Memory | null = null): Report {
+export function check(
+  config: Config,
+  memory: Memory | null = null,
+  glossary: Glossary | null = null,
+): Report {
   const source = loadBundle(config, config.sourceLocale);
   const findings: Finding[] = [];
   const stats: LocaleStat[] = [];
@@ -248,7 +299,9 @@ export function check(config: Config, memory: Memory | null = null): Report {
 
   for (const locale of config.locales) {
     if (locale === config.sourceLocale) continue;
-    stats.push(checkLocale(config, source, loadBundle(config, locale), findings, memory));
+    stats.push(
+      checkLocale(config, source, loadBundle(config, locale), findings, memory, glossary),
+    );
   }
 
   findings.sort(

@@ -5,6 +5,12 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { check } from './check.js';
 import { ParseError } from './formats/json.js';
+import {
+  GlossaryError,
+  glossaryPath,
+  loadGlossary,
+  type Glossary,
+} from './glossary.js';
 import { PhpParseError } from './formats/php.js';
 import {
   MemoryError,
@@ -30,6 +36,7 @@ const commonInput = {
   localesDir: z.string().optional().describe('Locales directory. Auto-detected when omitted.'),
   source: z.string().optional().describe('Source locale. Defaults to en, else the first found.'),
   memory: z.string().optional().describe('Translation memory file. Defaults to .i18n/memory.json.'),
+  glossary: z.string().optional().describe('Glossary file. Defaults to .i18n/glossary.json.'),
 };
 
 const statShape = {
@@ -47,6 +54,7 @@ interface CommonArgs {
   localesDir?: string;
   source?: string;
   memory?: string;
+  glossary?: string;
   ignoreIdentical?: string[];
   syntax?: string[];
 }
@@ -66,6 +74,13 @@ function openMemory(config: Config, explicit?: string): { memory: Memory | null;
   const file = memoryPath(config.root, explicit);
   if (explicit && !existsSync(file)) throw new MemoryError(`Memory file not found: ${file}`);
   return { memory: loadMemory(file), file };
+}
+
+/** An explicitly named glossary must exist; the default path is optional. */
+function openGlossary(config: Config, explicit?: string): { glossary: Glossary | null; file: string } {
+  const file = glossaryPath(config.root, explicit);
+  if (explicit && !existsSync(file)) throw new GlossaryError(`Glossary file not found: ${file}`);
+  return { glossary: loadGlossary(file), file };
 }
 
 function pad(s: string, width: number, right = false): string {
@@ -120,7 +135,9 @@ function renderFindings(findings: Finding[], offset: number, total: number): str
 }
 
 function describeError(err: unknown): string {
-  if (err instanceof ScanError || err instanceof MemoryError) return err.message;
+  if (err instanceof ScanError || err instanceof MemoryError || err instanceof GlossaryError) {
+    return err.message;
+  }
   if (err instanceof ParseError) return `Invalid JSON in ${err.file}\n  ${err.message}`;
   if (err instanceof PhpParseError) return `Cannot parse ${err.file}\n  ${err.message}`;
   return err instanceof Error ? err.message : String(err);
@@ -149,6 +166,7 @@ server.registerTool(
       const config = buildConfig(args);
       const { layout, locales } = listLocales(config.localesDir);
       const { memory, file } = openMemory(config, args.memory);
+      const glossaryInfo = openGlossary(config, args.glossary);
       return {
         content: [
           {
@@ -160,6 +178,11 @@ server.registerTool(
               `locales: ${locales.join(', ')}`,
               `placeholders: ${config.placeholderSyntaxes.join(', ')}`,
               `memory: ${memory ? file : 'none (run i18n_sync to start tracking)'}`,
+              `glossary: ${
+                glossaryInfo.glossary
+                  ? `${glossaryInfo.file} (${glossaryInfo.glossary.terms.length} terms, ${glossaryInfo.glossary.doNotTranslate.length} verbatim)`
+                  : 'none'
+              }`,
             ].join('\n'),
           },
         ],
@@ -189,7 +212,8 @@ server.registerTool(
     try {
       const config = buildConfig(args);
       const { memory } = openMemory(config, args.memory);
-      const report = check(config, memory);
+      const { glossary } = openGlossary(config, args.glossary);
+      const report = check(config, memory, glossary);
       return {
         content: [
           {
@@ -251,6 +275,7 @@ server.registerTool(
         .optional()
         .describe('Override placeholder syntaxes. Add "laravel" for :name projects.'),
       noMemory: z.boolean().optional().describe('Ignore the memory; disables stale detection.'),
+      noGlossary: z.boolean().optional().describe('Ignore the glossary.'),
     },
     outputSchema: {
       sourceLocale: z.string(),
@@ -282,7 +307,8 @@ server.registerTool(
       }
 
       const memory = args.noMemory ? null : openMemory(config, args.memory).memory;
-      const report = check(config, memory);
+      const glossary = args.noGlossary ? null : openGlossary(config, args.glossary).glossary;
+      const report = check(config, memory, glossary);
 
       const locales = new Set(args.locale ?? []);
       let findings = report.findings;

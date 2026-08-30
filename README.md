@@ -359,6 +359,7 @@ structurally. PHP is a development dependency for that test only.
 i18n-keeper check [path]    lint locale files
 i18n-keeper scan  [path]    show what would be checked
 i18n-keeper sync  [path]    record current translations in the memory
+i18n-keeper translate [path]  fill the missing and stale set with Claude
 
 --locales <dir>             locales directory (default: auto-detect)
 --source <locale>           source locale (default: en, else the first found)
@@ -380,6 +381,13 @@ check
 sync
 --origin <human|machine>    who produced these translations (default: human)
 --force                     re-record unchanged translations, clearing stale
+
+translate
+--write                     apply accepted translations (default: write nothing)
+--cap <n>                   most strings per run (default: 50)
+--batch <n>                 strings per request (default: 20)
+--model <id>                default: claude-opus-5
+--effort <level>            low|medium|high|xhigh|max (default: medium)
 ```
 
 Exit codes: `0` clean, `1` at least one error, `2` the tool itself failed.
@@ -419,11 +427,72 @@ few dozen tokens before asking for detail. `i18n_status`, `i18n_check` and
 `i18n_sync` also return `structuredContent`, so the numbers can be consumed
 without parsing the table.
 
+## Machine translation
+
+Everything above is deterministic and offline. This one command is neither: it
+calls Claude, and its output cannot be verified by reading it in a language you
+do not speak.
+
+So it is not trusted. **Every proposal goes back through the same checks the
+linter applies, and anything that fails is rejected rather than written.**
+
+```bash
+i18n-keeper translate          # propose, validate, print — writes nothing
+i18n-keeper translate --write  # also apply the accepted ones
+```
+
+The work list is the report's own `missing_key`, `empty_value` and `stale`
+findings, so the linter decides what needs translating.
+
+### The constraints go in, not just on afterwards
+
+Each string is sent with everything the checks will later demand of it: the
+placeholders that must survive, the plural categories the target language
+requires, the glossary forms and do-not-translate tokens that apply to *that*
+string, and the width limit for that key.
+
+Then the result is checked anyway. When a proposal fails, it goes back once with
+the specific rule it broke:
+
+```
+  request: fr, 4 strings
+  request: fr, 3 strings (retry)
+
+  accept  cart.empty       Votre panier est vide
+  accept  cart.total       Total : {{amount}}
+  REJECT  nav.subscribe    S'abonner à la lettre d'information
+          ! 35 columns, limit 12
+```
+
+The first attempt had dropped `{{amount}}` and translated *cart* as *chariot*
+against the glossary; the retry fixed both. The third string was too wide twice
+and was never written.
+
+### Nothing is written by accident
+
+Without `--write` the command only prints. With it, accepted translations are
+applied and recorded in the memory as `origin: "machine"`, `reviewed: false` —
+so a human can find every unreviewed machine string later, and `stale` keeps
+working from there.
+
+Writing back is narrower than reading: JSON round-trips losslessly, while PHP,
+YAML and `.po` carry comments, anchors and translator notes that a naive
+re-serialise would discard. Those are reported as not written rather than
+rewritten.
+
+Exit code is 1 whenever anything was rejected, so a pipeline notices.
+
+### Cost and credentials
+
+Needs `ANTHROPIC_API_KEY`, or a profile from `ant auth login`. Defaults to
+`claude-opus-5` at `--effort medium`, batches of 20 strings, and at most 50
+strings per run — raise with `--cap`. The source strings, their keys and their
+constraints are what gets sent.
+
 ## Not yet
 
-Machine translation of the stale and missing set, which is the one part that
-needs a network and cannot be verified mechanically. The core is a plain
-library, so it is additive.
+Writers for PHP, YAML and `.po`, so `translate --write` can apply to those
+formats too rather than reporting them as skipped.
 
 ## Development
 
@@ -440,6 +509,7 @@ npm run test:plurals   # ICU scanner and CLDR category resolution
 npm run test:glossary  # term matching across scripts, and glossary errors
 npm run test:lengths   # display width, limit resolution, limits-file errors
 npm run test:formats   # gettext parsing, YAML typing traps, parse errors
+npm run test:translate # the translation gate, against a stub client (no network)
 npm run demo:plurals   # five locales with one, two, four and six plural forms
 npm run demo:glossary  # inflection, Cyrillic stems, CJK and brand names
 npm run demo:lengths   # German expansion and double-width Japanese

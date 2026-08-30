@@ -1,19 +1,37 @@
 {
   "name": "i18n-keeper",
   "version": "0.0.1",
-  "description": "Deterministic i18n linter: missing keys, orphans and broken placeholders across locale files.",
+  "description": "Deterministic i18n linter for locale files, as a CLI and an MCP server.",
   "type": "module",
-  "bin": { "i18n-keeper": "dist/cli.js" },
-  "files": ["dist"],
-  "engines": { "node": ">=20" },
+  "bin": {
+    "i18n-keeper": "dist/cli.js",
+    "i18n-keeper-mcp": "dist/mcp.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc",
-    "demo": "node dist/cli.js check fixtures/demo"
+    "demo": "node dist/cli.js check fixtures/demo",
+    "smoke": "node scripts/mcp-smoke.mjs"
   },
-  "keywords": ["i18n", "l10n", "lint", "locales", "translation"],
+  "keywords": [
+    "i18n",
+    "l10n",
+    "lint",
+    "locales",
+    "translation"
+  ],
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^22.10.2",
     "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.5.4"
   }
 }

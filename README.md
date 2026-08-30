@@ -78,12 +78,46 @@ i18n-keeper scan  [path]    show what would be checked
 Exit codes: `0` clean, `1` at least one error, `2` the tool itself failed.
 Suitable for CI and pre-commit as-is.
 
+## MCP server
+
+The same core is exposed over MCP, so an agent can lint locales itself.
+
+```bash
+claude mcp add i18n-keeper -- node C:/Users/glize/work/i18n-keeper/dist/mcp.js
+```
+
+Or per project, in `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "i18n-keeper": {
+      "command": "node",
+      "args": ["C:/Users/glize/work/i18n-keeper/dist/mcp.js"]
+    }
+  }
+}
+```
+
+| Tool | Returns |
+|---|---|
+| `i18n_scan` | Locale directory, layout and locales that would be checked |
+| `i18n_status` | Per-locale coverage and counts, no individual findings |
+| `i18n_check` | Findings, filterable by `locale` / `rule` / `severity`, paged via `offset` |
+
+All three are read-only and never touch the network. Findings are paged
+(25 per call by default) because tool output costs the agent context;
+`i18n_status` exists so an agent can get the shape of the problem for a few
+dozen tokens before asking for detail.
+
+`i18n_status` and `i18n_check` also return `structuredContent`, so the numbers
+can be consumed without parsing the table.
+
 ## Not in v0
 
 Translation memory and `stale` detection (source changed after translation),
-PHP/`.po`/YAML formats, CLDR plural-category validation, glossary enforcement,
-length overflow, and the MCP server wrapper. The core is a plain library so all
-of those are additive.
+PHP/`.po`/YAML formats, CLDR plural-category validation, glossary enforcement
+and length overflow. The core is a plain library, so all of those are additive.
 
 ## Development
 

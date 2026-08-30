@@ -1,0 +1,11 @@
+{
+  "cart": {
+    "items": "{count, plural, one {عنصر واحد} other {# عناصر}}",
+    "removed": "{count, plural, zero {لا شيء} one {عنصر واحد} two {عنصران} few {# عناصر} many {# عنصرًا} other {# عنصر}}"
+  },
+  "file_one": "ملف واحد",
+  "file_other": "{{count}} ملفات",
+  "msg_one": "رسالة واحدة",
+  "msg_other": "{{count}} رسائل",
+  "greeting": "مرحبا"
+}

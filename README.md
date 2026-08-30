@@ -38,6 +38,10 @@ errors
 | `identical_to_source` | warning | Probably untranslated (allowlist with `--ignore-identical`) |
 | `stale` | warning | Source changed after the translation was recorded |
 | `untracked` | off | Translated but absent from the memory |
+| `icu_syntax_error` | error | Malformed ICU message — throws at format time |
+| `plural_missing_category` | warning | Plural lacks a form the target language requires |
+| `plural_extra_category` | warning | Plural branch the target language never selects |
+| `plural_selector_lost` | warning | Laravel `a|b` selection flattened to one form |
 
 Errors break at runtime. Warnings only look bad — an outdated translation still
 renders, so `stale` is a warning even though it is the most interesting rule
@@ -88,6 +92,43 @@ the command says how many entries it deliberately left stale.
 **A hand-edited translation is not called stale.** If the target no longer
 matches what the memory recorded, someone already touched it and we cannot claim
 it is outdated — so the rule stays quiet rather than guessing.
+
+## Plural forms
+
+English has two plural forms, Polish has four, Arabic has six, Japanese has one.
+A translation copied from the English shape is therefore not merely stylistically
+off — it renders the wrong grammar for whole ranges of numbers, silently.
+
+Categories come from `Intl.PluralRules`, i.e. the ICU data already in the
+runtime, rather than a table in this repository that would drift out of date.
+
+```
+pl  cart.removed  plural_missing_category  pl needs one/few/many/other, has one/other
+ja  cart.removed  plural_extra_category    one is not a plural category in ja
+ar  file_*        plural_missing_category  ar needs zero/one/two/few/many/other, has one/other
+```
+
+Both plural conventions are understood: ICU messages
+(`{count, plural, one {# item} other {# items}}`) and i18next suffix keys
+(`item_one`, `item_few`, `item_other`).
+
+Getting this right also **removes** findings that a locale-diffing tool would
+otherwise invent:
+
+- `item_few` exists in Polish and not in English. That is correct, not an orphan.
+- `item_one` is absent from Japanese, which has no such form. That is correct,
+  not a missing key — and it is left out of the coverage denominator, so a
+  complete Japanese locale reads as 100%.
+
+When a locale tag is not recognised, nothing is asserted. `Intl.PluralRules`
+quietly falls back to the system locale for unknown tags — asking about `zz` on
+a Russian machine reports four categories — so a resolved language subtag that
+does not match the request is treated as unknown rather than as an answer.
+
+Laravel's `a|b` and `{0} none|[1,*] many` selection is its own mechanism, not
+CLDR, so it is not judged against CLDR categories. The one unambiguous failure —
+a source that selects between forms translated as a single form — is reported as
+`plural_selector_lost`.
 
 ## Placeholder syntaxes
 
@@ -206,10 +247,9 @@ without parsing the table.
 
 ## Not yet
 
-Machine translation of the stale/missing set, `.po` and YAML formats, CLDR
-plural-category validation, glossary and do-not-translate enforcement, and
-length-overflow checks. The core is a plain library, so all of those are
-additive.
+Machine translation of the stale/missing set, `.po` and YAML formats, glossary
+and do-not-translate enforcement, and length-overflow checks. The core is a
+plain library, so all of those are additive.
 
 ## Development
 
@@ -222,6 +262,8 @@ npm run walkthrough    # the whole memory/stale lifecycle, step by step
 npm run smoke          # drives the MCP server as a real client would
 npm run test:php       # our PHP parser vs the real interpreter (needs php)
 npm run test:laravel   # placeholder casing, flat PHP layout, parse errors
+npm run test:plurals   # ICU scanner and CLDR category resolution
+npm run demo:plurals   # five locales with one, two, four and six plural forms
 ```
 
 MIT.

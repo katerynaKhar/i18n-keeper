@@ -1,6 +1,6 @@
 {
   "name": "i18n-keeper",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Deterministic i18n linter for JSON and Laravel PHP locale files, as a CLI and an MCP server.",
   "type": "module",
   "bin": {
@@ -17,10 +17,12 @@
     "build": "tsc",
     "demo": "node dist/cli.js check fixtures/demo",
     "demo:laravel": "node dist/cli.js check fixtures/laravel",
+    "demo:plurals": "node dist/cli.js check fixtures/plurals",
     "walkthrough": "node scripts/stale-walkthrough.mjs",
     "smoke": "node scripts/mcp-smoke.mjs",
     "test:php": "node scripts/php-oracle.mjs",
-    "test:laravel": "node scripts/php-checks.mjs"
+    "test:laravel": "node scripts/php-checks.mjs",
+    "test:plurals": "node scripts/plural-checks.mjs && node scripts/plural-integration.mjs"
   },
   "keywords": [
     "i18n",

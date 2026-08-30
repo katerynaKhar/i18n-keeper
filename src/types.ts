@@ -11,6 +11,10 @@ export const RULE_IDS = [
   'identical_to_source',
   'stale',
   'untracked',
+  'icu_syntax_error',
+  'plural_missing_category',
+  'plural_extra_category',
+  'plural_selector_lost',
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -27,6 +31,12 @@ export const DEFAULT_RULES: Record<RuleId, RuleSetting> = {
   stale: 'warning',
   // Every key is untracked until the first sync, so this one is opt-in.
   untracked: 'off',
+  // Malformed ICU throws at format time; a missing category only renders the
+  // wrong grammar, which is bad but not fatal.
+  icu_syntax_error: 'error',
+  plural_missing_category: 'warning',
+  plural_extra_category: 'warning',
+  plural_selector_lost: 'warning',
 };
 
 export interface Finding {

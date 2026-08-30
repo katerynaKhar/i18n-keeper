@@ -1,0 +1,13 @@
+{
+  "cart": {
+    "items": "{count, plural, one {# article} other {# articles}",
+    "removed": "{count, plural, one {# article retiré} many {# articles retirés} other {# articles retirés}}"
+  },
+  "file_one": "un fichier",
+  "file_many": "{{count}} de fichiers",
+  "file_other": "{{count}} fichiers",
+  "msg_one": "un message",
+  "msg_many": "{{count}} de messages",
+  "msg_other": "{{count}} messages",
+  "greeting": "Bonjour"
+}

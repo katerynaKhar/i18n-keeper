@@ -1,0 +1,11 @@
+{
+  "cart": {
+    "items": "{count, plural, one {# item} other {# items}}",
+    "removed": "{count, plural, =0 {nothing removed} one {# item removed} other {# items removed}}"
+  },
+  "file_one": "one file",
+  "file_other": "{{count}} files",
+  "msg_one": "one message",
+  "msg_other": "{{count}} messages",
+  "greeting": "Hello"
+}

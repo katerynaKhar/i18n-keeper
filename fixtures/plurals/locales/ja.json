@@ -1,0 +1,9 @@
+{
+  "cart": {
+    "items": "{count, plural, other {#件のアイテム}}",
+    "removed": "{count, plural, one {#件を削除} other {#件を削除しました}}"
+  },
+  "file_other": "{{count}}ファイル",
+  "msg_other": "{{count}}メッセージ",
+  "greeting": "こんにちは"
+}

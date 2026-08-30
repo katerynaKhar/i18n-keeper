@@ -252,28 +252,48 @@ export function scanIcu(text: string): IcuScan {
 export interface SuffixKey {
   base: string;
   category: Category;
+  separator: '_' | '.';
 }
 
+export interface PluralGroup {
+  categories: Set<Category>;
+  /** Kept so a finding can name the keys as the project actually writes them. */
+  separator: '_' | '.';
+}
+
+/** i18next writes item_one; Rails and Symfony nest it as item.one. */
 export function splitPluralSuffix(key: string): SuffixKey | null {
-  const underscore = key.lastIndexOf('_');
-  if (underscore <= 0) return null;
-  const suffix = key.slice(underscore + 1);
-  if (!isCategory(suffix)) return null;
-  return { base: key.slice(0, underscore), category: suffix };
+  for (const separator of ['_', '.'] as const) {
+    const at = key.lastIndexOf(separator);
+    if (at <= 0) continue;
+    const suffix = key.slice(at + 1);
+    if (isCategory(suffix)) return { base: key.slice(0, at), category: suffix, separator };
+  }
+  return null;
 }
 
-/** Groups keys like item_one / item_other into base -> categories. */
-export function pluralGroups(keys: Iterable<string>): Map<string, Set<Category>> {
-  const groups = new Map<string, Set<Category>>();
+/**
+ * Groups keys like item_one / item_other into base -> categories.
+ *
+ * A lone sibling is not a plural group: a key literally named `numbers.one`
+ * should not be asked to grow a `few` form. A real group either carries
+ * `other`, which every language has, or offers more than one category.
+ */
+export function pluralGroups(keys: Iterable<string>): Map<string, PluralGroup> {
+  const groups = new Map<string, PluralGroup>();
   for (const key of keys) {
     const split = splitPluralSuffix(key);
     if (!split) continue;
-    let set = groups.get(split.base);
-    if (!set) {
-      set = new Set();
-      groups.set(split.base, set);
+    let group = groups.get(split.base);
+    if (!group) {
+      group = { categories: new Set(), separator: split.separator };
+      groups.set(split.base, group);
     }
-    set.add(split.category);
+    group.categories.add(split.category);
+  }
+
+  for (const [base, group] of groups) {
+    if (!group.categories.has('other') && group.categories.size < 2) groups.delete(base);
   }
   return groups;
 }

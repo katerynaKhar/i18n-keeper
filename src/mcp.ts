@@ -4,7 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { check } from './check.js';
-import { ParseError } from './formats/json.js';
+import { FormatError, describeFormatError } from './formats/error.js';
 import {
   GlossaryError,
   glossaryPath,
@@ -12,7 +12,6 @@ import {
   type Glossary,
 } from './glossary.js';
 import { LimitsError, limitsPath, loadLimits, type Limits } from './lengths.js';
-import { PhpParseError } from './formats/php.js';
 import {
   MemoryError,
   emptyMemory,
@@ -153,8 +152,7 @@ function describeError(err: unknown): string {
   ) {
     return err.message;
   }
-  if (err instanceof ParseError) return `Invalid JSON in ${err.file}\n  ${err.message}`;
-  if (err instanceof PhpParseError) return `Cannot parse ${err.file}\n  ${err.message}`;
+  if (err instanceof FormatError) return describeFormatError(err);
   return err instanceof Error ? err.message : String(err);
 }
 

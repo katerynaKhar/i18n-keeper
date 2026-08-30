@@ -26,6 +26,14 @@ import type { Config, Finding, LocaleBundle, LocaleStat, Report, RuleId } from '
 
 const HAS_LETTER = /\p{L}/u;
 
+/** gettext plural forms are indexed, not named: base.0, base.1, base.2. */
+const PLURAL_INDEX = /^(.*)\.(\d+)$/;
+
+function pluralIndexBase(key: string): string | null {
+  const match = PLURAL_INDEX.exec(key);
+  return match ? match[1]! : null;
+}
+
 function push(
   findings: Finding[],
   config: Config,
@@ -112,6 +120,13 @@ function checkLocale(
     const targetLeaf = target.leaves.get(key);
 
     if (!targetLeaf) {
+      const indexBase = pluralIndexBase(key);
+      if (indexBase && (source.plurals.has(indexBase) || target.plurals.has(indexBase))) {
+        // A catalogue carries as many forms as its own language needs.
+        notApplicable++;
+        continue;
+      }
+
       const suffix = splitPluralSuffix(key);
       if (suffix && sourceGroups.has(suffix.base) && categories && !categories.has(suffix.category)) {
         // e.g. item_one has no counterpart in Japanese, which only has `other`.
@@ -205,7 +220,12 @@ function checkLocale(
     }
 
     const verdict = judge(memory?.entries[target.locale]?.[key], sourceLeaf.value, targetLeaf.value);
-    if (verdict.stale) {
+    if (targetLeaf.fuzzy) {
+      // gettext already tracks this; no translation memory needed.
+      stale++;
+      push(findings, config, 'stale', target.locale, key, targetLeaf.file,
+        'marked fuzzy in the catalogue');
+    } else if (verdict.stale) {
       stale++;
       push(findings, config, 'stale', target.locale, key, targetLeaf.file,
         'source changed after this translation was recorded');
@@ -219,6 +239,9 @@ function checkLocale(
     if (source.leaves.has(key)) continue;
     // Already reported as a structure mismatch one level up; not a separate orphan.
     if (structuralPrefixes.some((prefix) => key.startsWith(prefix))) continue;
+
+    const indexBase = pluralIndexBase(key);
+    if (indexBase && (source.plurals.has(indexBase) || target.plurals.has(indexBase))) continue;
 
     const suffix = splitPluralSuffix(key);
     if (suffix && sourceGroups.has(suffix.base) && categories?.has(suffix.category)) {
@@ -235,22 +258,37 @@ function checkLocale(
     push(findings, config, 'orphan_key', target.locale, key, leaf.file, 'not in source locale');
   }
 
+  // gettext states its own form count in the catalogue header, so this one is
+  // internally checkable without consulting CLDR at all.
+  if (target.nplurals !== null) {
+    for (const [base, forms] of target.plurals) {
+      if (forms === target.nplurals) continue;
+      push(findings, config, 'plural_missing_category', target.locale, base,
+        target.files[0] ?? target.locale,
+        `header declares nplurals=${target.nplurals}, entry has ${forms}`);
+    }
+  }
+
   // Suffix-key plural groups, checked per group rather than per key.
   if (categories) {
     for (const base of sourceGroups.keys()) {
       const have = targetGroups.get(base);
       if (!have) continue; // the whole group is missing; already reported above
 
-      const absent = [...categories].filter((c) => !have.has(c as Category));
+      // Named the way the project writes it: item_one for i18next, item.one for
+      // Rails and Symfony.
+      const label = `${base}${have.separator}*`;
+
+      const absent = [...categories].filter((c) => !have.categories.has(c as Category));
       if (absent.length > 0) {
-        push(findings, config, 'plural_missing_category', target.locale, `${base}_*`,
+        push(findings, config, 'plural_missing_category', target.locale, label,
           target.files[0] ?? target.locale,
-          `${target.locale} needs ${list(categories)}, has ${list(have)}`);
+          `${target.locale} needs ${list(categories)}, has ${list(have.categories)}`);
       }
 
-      const extra = [...have].filter((c) => !categories.has(c));
+      const extra = [...have.categories].filter((c) => !categories.has(c));
       if (extra.length > 0) {
-        push(findings, config, 'plural_extra_category', target.locale, `${base}_*`,
+        push(findings, config, 'plural_extra_category', target.locale, label,
           target.files[0] ?? target.locale,
           `${list(extra)} is not a plural category in ${target.locale}`);
       }

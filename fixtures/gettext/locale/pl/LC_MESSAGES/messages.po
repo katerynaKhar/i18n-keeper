@@ -1,0 +1,30 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 ? 1 : 2);\n"
+
+msgid "Your cart is empty"
+msgstr "Twój koszyk jest pusty"
+
+msgid "Add to cart"
+msgstr ""
+
+msgctxt "verb"
+msgid "Open"
+msgstr "Otwórz"
+
+msgid "%d file"
+msgid_plural "%d files"
+msgstr[0] "%d plik"
+msgstr[1] "%d pliki"
+
+msgid "Welcome, %s!"
+msgstr "Witaj, %s!"
+
+msgid ""
+"A long line split across "
+"two source rows."
+msgstr "Długa linia podzielona na dwa wiersze źródłowe."
+
+#~ msgid "Removed long ago"
+#~ msgstr "Usunięte dawno temu"

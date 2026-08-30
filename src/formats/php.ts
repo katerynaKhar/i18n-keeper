@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
-import type { Leaf } from '../types.js';
+import type { ReadTarget } from '../types.js';
+import { FormatError } from './error.js';
 import { flattenValue, type PlainValue } from './flatten.js';
 
 /**
@@ -11,13 +12,9 @@ import { flattenValue, type PlainValue } from './flatten.js';
  * outside the literal subset is a clear error rather than a guess.
  */
 
-export class PhpParseError extends Error {
-  constructor(
-    public file: string,
-    public line: number,
-    message: string,
-  ) {
-    super(`${message} (line ${line})`);
+export class PhpParseError extends FormatError {
+  constructor(file: string, line: number, message: string) {
+    super(file, message, line);
   }
 }
 
@@ -322,9 +319,10 @@ export function parsePhp(text: string, file: string): PlainValue {
 export function readPhpLocale(
   file: string,
   namespace: string,
-  leaves: Map<string, Leaf>,
-  containers: Set<string>,
+  _locale: string,
+  _isSource: boolean,
+  target: ReadTarget,
 ): void {
   const parsed = parsePhp(readFileSync(file, 'utf8'), file);
-  flattenValue(parsed, namespace, file, leaves, containers);
+  flattenValue(parsed, namespace, file, target.leaves, target.containers);
 }

@@ -1,0 +1,13 @@
+en:
+  cart:
+    empty: "Your cart is empty"
+    add: Add to cart
+  items:
+    one: "1 item"
+    other: "%{count} items"
+  greeting: |
+    Hello there.
+    Welcome back.
+  languages:
+    en: English
+    no: Norwegian

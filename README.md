@@ -1,7 +1,7 @@
 # i18n-keeper
 
-Deterministic linter for JSON and Laravel PHP locale files, as a CLI and an MCP
-server. No LLM, no network, no API key — every finding is mechanically
+Deterministic linter for JSON, Laravel PHP, gettext and YAML locale files, as a
+CLI and an MCP server. No LLM, no network, no API key — every finding is mechanically
 verifiable, which is the point: you can trust the report in languages you do not
 read.
 
@@ -240,9 +240,14 @@ ja  cart.removed  plural_extra_category    one is not a plural category in ja
 ar  file_*        plural_missing_category  ar needs zero/one/two/few/many/other, has one/other
 ```
 
-Both plural conventions are understood: ICU messages
-(`{count, plural, one {# item} other {# items}}`) and i18next suffix keys
-(`item_one`, `item_few`, `item_other`).
+Three plural conventions are understood: ICU messages
+(`{count, plural, one {# item} other {# items}}`), i18next suffix keys
+(`item_one`, `item_few`), and Rails or Symfony nesting (`items.one`,
+`items.few`). Findings name the group the way the project writes it —
+`item_*` or `items.*`.
+
+A single sibling is not treated as a plural group, so a key literally named
+`numbers.one` is never asked to grow a `few` form.
 
 Getting this right also **removes** findings that a locale-diffing tool would
 otherwise invent:
@@ -277,21 +282,54 @@ has PHP language files, and `--syntax` overrides the choice either way.
 
 ## Formats and layouts
 
-JSON and Laravel-style PHP language files, in either layout, auto-detected:
+JSON, Laravel PHP, gettext and YAML, in either layout, auto-detected:
 
 ```
-locales/en.json              locales/en/common.json
-locales/fr.json              locales/en/shop/pricing.json  -> shop.pricing.price
-
-lang/en.php                  lang/en/messages.php          -> messages.cart.total
-lang/fr.php                  lang/en/validation.php        -> validation.max.string
+locales/en.json              locales/en/common.json        -> common.cart.total
+lang/en.php                  lang/en/validation.php        -> validation.max.string
+config/locales/en.yml        locale/en/LC_MESSAGES/app.po  -> app.<msgid>
 ```
 
-Both can coexist: a locale directory holding `messages.php` next to a
+Formats can coexist: a locale directory holding `messages.php` next to a
 `lang/en.json` is read as one keyspace. When PHP files are present, Laravel's
 `:name` interpolation is enabled automatically, and `:name`, `:Name` and
 `:NAME` are treated as one placeholder because Laravel renders them from the
 same replacement.
+
+### gettext
+
+The msgid *is* the source text, so a `.pot` — or any catalogue with empty
+`msgstr` — works as the source locale without a parallel English file.
+
+The format also already tracks what the translation memory was built for: an
+entry flagged `#, fuzzy` is reported as `stale` with no memory involved.
+
+```
+fr  messages.Add to cart     stale                    marked fuzzy in the catalogue
+fr  messages.Welcome, %s!    placeholder_missing      %s lost
+pl  messages.adjective|Open  missing_key              not translated
+pl  messages.%d file         plural_missing_category  header declares nplurals=3, entry has 2
+```
+
+`msgctxt` disambiguates, and shows in keys as `context|msgid`. Entries
+commented out with `#~` are already removed from the catalogue and are not
+reported as orphans. `LC_MESSAGES` is dropped from key paths, since it is
+directory layout rather than namespace. The last check above needs no CLDR at
+all: the catalogue header states its own form count.
+
+### YAML
+
+Rails nests a whole file under its locale code, which is stripped — otherwise
+every key in `en.yml` would differ from every key in `fr.yml`. Rails also
+writes plurals as nested `one:` / `other:` keys, which are recognised
+alongside i18next's `item_one` suffixes.
+
+This is the one format with a dependency (`yaml`). The PHP parser is hand
+written because the alternative there was executing untrusted code; YAML poses
+no such hazard, and its spec is deep enough — anchors, block scalars, implicit
+typing — that a hand-rolled subset would quietly misread real files. Notably,
+under YAML 1.1 a `no:` key becomes `false`, which would silently corrupt a
+Norwegian entry; the library's 1.2 default keeps it a string.
 
 ### PHP files are parsed, never executed
 
@@ -383,8 +421,9 @@ without parsing the table.
 
 ## Not yet
 
-Machine translation of the stale/missing set, and `.po` and YAML formats. The
-core is a plain library, so both are additive.
+Machine translation of the stale and missing set, which is the one part that
+needs a network and cannot be verified mechanically. The core is a plain
+library, so it is additive.
 
 ## Development
 
@@ -400,9 +439,12 @@ npm run test:laravel   # placeholder casing, flat PHP layout, parse errors
 npm run test:plurals   # ICU scanner and CLDR category resolution
 npm run test:glossary  # term matching across scripts, and glossary errors
 npm run test:lengths   # display width, limit resolution, limits-file errors
+npm run test:formats   # gettext parsing, YAML typing traps, parse errors
 npm run demo:plurals   # five locales with one, two, four and six plural forms
 npm run demo:glossary  # inflection, Cyrillic stems, CJK and brand names
 npm run demo:lengths   # German expansion and double-width Japanese
+npm run demo:gettext   # fuzzy entries, msgctxt, nplurals
+npm run demo:rails     # locale roots and nested plural keys
 ```
 
 MIT.

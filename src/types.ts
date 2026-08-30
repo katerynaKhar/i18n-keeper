@@ -67,6 +67,18 @@ export interface Leaf {
   value: string;
   kind: LeafKind;
   file: string;
+  /** gettext marks a translation whose source moved as fuzzy. */
+  fuzzy?: boolean;
+}
+
+/** What a format reader fills in while reading one file. */
+export interface ReadTarget {
+  leaves: Map<string, Leaf>;
+  containers: Set<string>;
+  /** gettext plural entries: base key -> number of msgstr forms present. */
+  plurals: Map<string, number>;
+  /** nplurals declared by a .po header, when there is one. */
+  nplurals: number | null;
 }
 
 /** One locale, with every nested key flattened to dot notation. */
@@ -76,6 +88,8 @@ export interface LocaleBundle {
   leaves: Map<string, Leaf>;
   /** Keys that hold an object or array rather than a value. */
   containers: Set<string>;
+  plurals: Map<string, number>;
+  nplurals: number | null;
 }
 
 export interface Config {

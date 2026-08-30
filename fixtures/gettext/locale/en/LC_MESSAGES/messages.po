@@ -1,0 +1,34 @@
+# Source catalogue: the msgid carries the text, msgstr is empty.
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: src/cart.js:10
+msgid "Your cart is empty"
+msgstr ""
+
+#: src/cart.js:24
+msgid "Add to cart"
+msgstr ""
+
+msgctxt "verb"
+msgid "Open"
+msgstr ""
+
+msgctxt "adjective"
+msgid "Open"
+msgstr ""
+
+msgid "%d file"
+msgid_plural "%d files"
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "Welcome, %s!"
+msgstr ""
+
+msgid ""
+"A long line split across "
+"two source rows."
+msgstr ""

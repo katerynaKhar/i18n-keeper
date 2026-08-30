@@ -1,0 +1,13 @@
+pl:
+  cart:
+    empty: "Twój koszyk jest pusty"
+    add: Dodaj do koszyka
+  items:
+    one: "1 produkt"
+    other: "%{count} produktów"
+  greeting: |
+    Cześć.
+    Miło Cię znowu widzieć.
+  languages:
+    en: Angielski
+    no: Norweski

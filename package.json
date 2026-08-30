@@ -1,7 +1,7 @@
 {
   "name": "i18n-keeper",
-  "version": "0.5.0",
-  "description": "Deterministic i18n linter for JSON and Laravel PHP locale files, as a CLI and an MCP server.",
+  "version": "0.6.0",
+  "description": "Deterministic i18n linter for JSON, Laravel PHP, gettext and YAML locale files, as a CLI and an MCP server.",
   "type": "module",
   "bin": {
     "i18n-keeper": "dist/cli.js",
@@ -20,13 +20,16 @@
     "demo:plurals": "node dist/cli.js check fixtures/plurals",
     "demo:glossary": "node dist/cli.js check fixtures/glossary",
     "demo:lengths": "node dist/cli.js check fixtures/lengths --rule length_over_max --rule length_overflow",
+    "demo:gettext": "node dist/cli.js check fixtures/gettext",
+    "demo:rails": "node dist/cli.js check fixtures/rails",
     "walkthrough": "node scripts/stale-walkthrough.mjs",
     "smoke": "node scripts/mcp-smoke.mjs",
     "test:php": "node scripts/php-oracle.mjs",
     "test:laravel": "node scripts/php-checks.mjs",
     "test:plurals": "node scripts/plural-checks.mjs && node scripts/plural-integration.mjs",
     "test:glossary": "node scripts/glossary-checks.mjs",
-    "test:lengths": "node scripts/length-checks.mjs"
+    "test:lengths": "node scripts/length-checks.mjs",
+    "test:formats": "node scripts/format-checks.mjs"
   },
   "keywords": [
     "i18n",
@@ -34,6 +37,7 @@
     "lint",
     "locales",
     "translation",
+    "gettext",
     "laravel",
     "mcp"
   ],
@@ -44,6 +48,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "yaml": "^2.9.0",
     "zod": "^4.5.4"
   }
 }

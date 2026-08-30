@@ -32,14 +32,21 @@ for (const m of messages) {
   console.log(`${JSON.stringify(m).slice(0, 62).padEnd(64)} ${error ? `ERR ${error}` : summary || '(none)'}`);
 }
 
-console.log('\n=== pluralGroups (i18next suffixes) ===');
-const keys = [
-  'item_one', 'item_other', 'item_few',
-  'nav.home', 'snake_case_key', 'file_name',
-  'msg_zero', 'msg_two', 'msg_many',
-];
-for (const [base, cats] of pluralGroups(keys)) {
-  console.log(`${base.padEnd(16)} -> ${[...cats].join(',')}`);
+console.log('\n=== pluralGroups: both conventions, and what is not a group ===');
+const keySets = {
+  'i18next suffixes': ['item_one', 'item_other', 'item_few'],
+  'Rails nesting': ['items.one', 'items.other'],
+  'not plurals': ['nav.home', 'snake_case_key', 'file_name'],
+  'a lone non-other sibling': ['numbers.one'],
+  'a lone other is still a group': ['files.other'],
+  'mixed in one file': ['msg_zero', 'msg_two', 'msg_many', 'card.one', 'card.other'],
+};
+for (const [label, keys] of Object.entries(keySets)) {
+  const groups = pluralGroups(keys);
+  const shown = [...groups.entries()]
+    .map(([base, g]) => `${base}${g.separator}* {${[...g.categories].join(',')}}`)
+    .join('  ');
+  console.log(`  ${label.padEnd(28)} -> ${shown || '(no groups)'}`);
 }
 
 console.log('\n=== pipeSegments (Laravel) ===');

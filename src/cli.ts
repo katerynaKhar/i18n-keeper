@@ -3,7 +3,7 @@ import { parseArgs } from 'node:util';
 import { relative } from 'node:path';
 import { existsSync } from 'node:fs';
 import { check } from './check.js';
-import { ParseError } from './formats/json.js';
+import { FormatError, describeFormatError } from './formats/error.js';
 import {
   GlossaryError,
   glossaryPath,
@@ -11,7 +11,6 @@ import {
   type Glossary,
 } from './glossary.js';
 import { LimitsError, limitsPath, loadLimits, type Limits } from './lengths.js';
-import { PhpParseError } from './formats/php.js';
 import {
   MemoryError,
   emptyMemory,
@@ -277,7 +276,6 @@ try {
   if (err instanceof MemoryError) fail(err.message);
   if (err instanceof GlossaryError) fail(err.message);
   if (err instanceof LimitsError) fail(err.message);
-  if (err instanceof ParseError) fail(`Invalid JSON in ${err.file}\n  ${err.message}`);
-  if (err instanceof PhpParseError) fail(`Cannot parse ${err.file}\n  ${err.message}`);
+  if (err instanceof FormatError) fail(describeFormatError(err));
   throw err;
 }

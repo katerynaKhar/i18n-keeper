@@ -1,0 +1,14 @@
+fr:
+  cart:
+    empty: "Votre panier est vide"
+    add: Ajouter au panier
+  items:
+    one: "1 article"
+    many: "%{count} d'articles"
+    other: "%{count} articles"
+  greeting: |
+    Bonjour.
+    Content de vous revoir.
+  languages:
+    en: Anglais
+    no: Norvégien

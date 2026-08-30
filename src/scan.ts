@@ -2,7 +2,15 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { readJsonLocale } from './formats/json.js';
 import { readPhpLocale } from './formats/php.js';
-import { DEFAULT_RULES, type Config, type Leaf, type LocaleBundle } from './types.js';
+import { readPoLocale } from './formats/po.js';
+import { readYamlLocale } from './formats/yaml.js';
+import {
+  DEFAULT_RULES,
+  type Config,
+  type Leaf,
+  type LocaleBundle,
+  type ReadTarget,
+} from './types.js';
 import { DEFAULT_SYNTAXES } from './placeholders.js';
 
 const CANDIDATE_DIRS = [
@@ -16,13 +24,19 @@ const CANDIDATE_DIRS = [
   'resources/lang',
   'translations',
   'src/translations',
+  'config/locales',
+  'locale',
+  'po',
 ];
 
 /** Formats we can read, longest extension first so stripping is unambiguous. */
-const EXTENSIONS = ['.json', '.php'];
+const EXTENSIONS = ['.json', '.yaml', '.php', '.yml', '.pot', '.po'];
 
 function readerFor(file: string) {
-  return file.endsWith('.php') ? readPhpLocale : readJsonLocale;
+  if (file.endsWith('.php')) return readPhpLocale;
+  if (file.endsWith('.po') || file.endsWith('.pot')) return readPoLocale;
+  if (file.endsWith('.yml') || file.endsWith('.yaml')) return readYamlLocale;
+  return readJsonLocale;
 }
 
 function stripExtension(name: string): string | null {
@@ -91,9 +105,14 @@ function collectLocaleFiles(dir: string, acc: string[] = []): string[] {
 }
 
 export function loadBundle(config: Config, locale: string): LocaleBundle {
-  const leaves = new Map<string, Leaf>();
-  const containers = new Set<string>();
+  const target: ReadTarget = {
+    leaves: new Map<string, Leaf>(),
+    containers: new Set<string>(),
+    plurals: new Map<string, number>(),
+    nplurals: null,
+  };
   const files: string[] = [];
+  const isSource = locale === config.sourceLocale;
 
   if (config.layout === 'flat') {
     // A locale may be en.json or en.php; both are read when both exist.
@@ -101,7 +120,7 @@ export function loadBundle(config: Config, locale: string): LocaleBundle {
       const file = join(config.localesDir, `${locale}${ext}`);
       if (!existsSync(file)) continue;
       files.push(file);
-      readerFor(file)(file, '', leaves, containers);
+      readerFor(file)(file, '', locale, isSource, target);
     }
     if (files.length === 0) {
       throw new ScanError(`No locale file for "${locale}" in ${config.localesDir}`);
@@ -109,15 +128,27 @@ export function loadBundle(config: Config, locale: string): LocaleBundle {
   } else {
     const localeRoot = join(config.localesDir, locale);
     for (const file of collectLocaleFiles(localeRoot).sort()) {
-      // lang/en/shop/pricing.php -> namespace "shop.pricing"
+      // lang/en/shop/pricing.php -> "shop.pricing";
+      // locale/fr/LC_MESSAGES/messages.po -> "messages", since the gettext
+      // directory is layout, not namespace.
       const relativePath = relative(localeRoot, file);
-      const namespace = (stripExtension(relativePath) ?? relativePath).split(sep).join('.');
+      const namespace = (stripExtension(relativePath) ?? relativePath)
+        .split(sep)
+        .filter((part) => part !== 'LC_MESSAGES')
+        .join('.');
       files.push(file);
-      readerFor(file)(file, namespace, leaves, containers);
+      readerFor(file)(file, namespace, locale, isSource, target);
     }
   }
 
-  return { locale, files, leaves, containers };
+  return {
+    locale,
+    files,
+    leaves: target.leaves,
+    containers: target.containers,
+    plurals: target.plurals,
+    nplurals: target.nplurals,
+  };
 }
 
 export interface DetectOptions {

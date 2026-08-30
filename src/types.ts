@@ -9,6 +9,8 @@ export const RULE_IDS = [
   'placeholder_missing',
   'placeholder_extra',
   'identical_to_source',
+  'stale',
+  'untracked',
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -22,6 +24,9 @@ export const DEFAULT_RULES: Record<RuleId, RuleSetting> = {
   placeholder_missing: 'error',
   placeholder_extra: 'error',
   identical_to_source: 'warning',
+  stale: 'warning',
+  // Every key is untracked until the first sync, so this one is opt-in.
+  untracked: 'off',
 };
 
 export interface Finding {
@@ -69,6 +74,7 @@ export interface LocaleStat {
   coverage: number;
   missing: number;
   orphan: number;
+  stale: number;
   errors: number;
   warnings: number;
 }
@@ -77,6 +83,8 @@ export interface Report {
   localesDir: string;
   sourceLocale: string;
   sourceKeys: number;
+  /** Whether a translation memory was available; without one, stale is unknowable. */
+  memoryLoaded: boolean;
   stats: LocaleStat[];
   findings: Finding[];
 }

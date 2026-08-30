@@ -1,3 +1,4 @@
+import { judge, type Memory } from './memory.js';
 import { diffPlaceholders, extractPlaceholders } from './placeholders.js';
 import { loadBundle } from './scan.js';
 import type { Config, Finding, LocaleBundle, LocaleStat, Report, RuleId } from './types.js';
@@ -23,6 +24,7 @@ function checkLocale(
   source: LocaleBundle,
   target: LocaleBundle,
   findings: Finding[],
+  memory: Memory | null,
 ): LocaleStat {
   const before = findings.length;
   const ignore = new Set(config.ignoreIdentical.map((s) => s.toLowerCase()));
@@ -30,6 +32,7 @@ function checkLocale(
   let translated = 0;
   let missing = 0;
   let orphan = 0;
+  let stale = 0;
 
   for (const [key, sourceLeaf] of source.leaves) {
     const targetLeaf = target.leaves.get(key);
@@ -74,6 +77,16 @@ function checkLocale(
       push(findings, config, 'placeholder_extra', target.locale, key, targetLeaf.file,
         `${extra.join(', ')} not in source`);
     }
+
+    const verdict = judge(memory?.entries[target.locale]?.[key], sourceLeaf.value, targetLeaf.value);
+    if (verdict.stale) {
+      stale++;
+      push(findings, config, 'stale', target.locale, key, targetLeaf.file,
+        'source changed after this translation was recorded');
+    } else if (memory && !verdict.tracked) {
+      push(findings, config, 'untracked', target.locale, key, targetLeaf.file,
+        'no memory entry; run sync');
+    }
   }
 
   for (const [key, leaf] of target.leaves) {
@@ -99,6 +112,7 @@ function checkLocale(
     coverage: sourceKeys === 0 ? 1 : translated / sourceKeys,
     missing,
     orphan,
+    stale,
     errors: added.filter((f) => f.severity === 'error').length,
     warnings: added.filter((f) => f.severity === 'warning').length,
   };
@@ -110,14 +124,14 @@ function truncate(value: string, max = 40): string {
 
 const SEVERITY_ORDER = { error: 0, warning: 1 } as const;
 
-export function check(config: Config): Report {
+export function check(config: Config, memory: Memory | null = null): Report {
   const source = loadBundle(config, config.sourceLocale);
   const findings: Finding[] = [];
   const stats: LocaleStat[] = [];
 
   for (const locale of config.locales) {
     if (locale === config.sourceLocale) continue;
-    stats.push(checkLocale(config, source, loadBundle(config, locale), findings));
+    stats.push(checkLocale(config, source, loadBundle(config, locale), findings, memory));
   }
 
   findings.sort(
@@ -132,6 +146,7 @@ export function check(config: Config): Report {
     localesDir: config.localesDir,
     sourceLocale: config.sourceLocale,
     sourceKeys: source.leaves.size,
+    memoryLoaded: memory !== null,
     stats,
     findings,
   };

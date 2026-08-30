@@ -1,9 +1,19 @@
 #!/usr/bin/env node
+import { existsSync } from 'node:fs';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { check } from './check.js';
 import { ParseError } from './formats/json.js';
+import {
+  MemoryError,
+  emptyMemory,
+  loadMemory,
+  memoryPath,
+  saveMemory,
+  syncMemory,
+  type Memory,
+} from './memory.js';
 import { ALL_SYNTAXES } from './placeholders.js';
 import { ScanError, detectProject, listLocales } from './scan.js';
 import { RULE_IDS, type Config, type Finding, type Report, type RuleId } from './types.js';
@@ -18,6 +28,7 @@ const commonInput = {
   path: z.string().optional().describe('Project root. Defaults to the working directory.'),
   localesDir: z.string().optional().describe('Locales directory. Auto-detected when omitted.'),
   source: z.string().optional().describe('Source locale. Defaults to en, else the first found.'),
+  memory: z.string().optional().describe('Translation memory file. Defaults to .i18n/memory.json.'),
 };
 
 const statShape = {
@@ -25,17 +36,21 @@ const statShape = {
   coverage: z.number(),
   missing: z.number(),
   orphan: z.number(),
+  stale: z.number(),
   errors: z.number(),
   warnings: z.number(),
 };
 
-function buildConfig(args: {
+interface CommonArgs {
   path?: string;
   localesDir?: string;
   source?: string;
+  memory?: string;
   ignoreIdentical?: string[];
   syntax?: string[];
-}): Config {
+}
+
+function buildConfig(args: CommonArgs): Config {
   const config = detectProject(args.path ?? process.cwd(), {
     localesDir: args.localesDir,
     sourceLocale: args.source,
@@ -45,21 +60,35 @@ function buildConfig(args: {
   return config;
 }
 
+/** An explicitly named memory must exist; the default path is optional. */
+function openMemory(config: Config, explicit?: string): { memory: Memory | null; file: string } {
+  const file = memoryPath(config.root, explicit);
+  if (explicit && !existsSync(file)) throw new MemoryError(`Memory file not found: ${file}`);
+  return { memory: loadMemory(file), file };
+}
+
 function pad(s: string, width: number, right = false): string {
   const gap = ' '.repeat(Math.max(0, width - s.length));
   return right ? gap + s : s + gap;
 }
 
 function renderTable(report: Report): string {
-  const head = ['locale', 'cov', 'miss', 'orph', 'err', 'warn'];
-  const rows = report.stats.map((s) => [
-    s.locale,
-    `${(s.coverage * 100).toFixed(1)}%`,
-    String(s.missing),
-    String(s.orphan),
-    String(s.errors),
-    String(s.warnings),
-  ]);
+  const head = ['locale', 'cov', 'miss', 'orph'];
+  if (report.memoryLoaded) head.push('stale');
+  head.push('err', 'warn');
+
+  const rows = report.stats.map((s) => {
+    const row = [
+      s.locale,
+      `${(s.coverage * 100).toFixed(1)}%`,
+      String(s.missing),
+      String(s.orphan),
+    ];
+    if (report.memoryLoaded) row.push(String(s.stale));
+    row.push(String(s.errors), String(s.warnings));
+    return row;
+  });
+
   const widths = head.map((h, i) => Math.max(h.length, ...rows.map((r) => (r[i] ?? '').length)));
   const line = (cells: string[]) =>
     cells.map((c, i) => pad(c, widths[i]!, i > 0)).join('  ').trimEnd();
@@ -91,7 +120,7 @@ function renderFindings(findings: Finding[], offset: number, total: number): str
 
 function toolError(err: unknown) {
   const message =
-    err instanceof ScanError
+    err instanceof ScanError || err instanceof MemoryError
       ? err.message
       : err instanceof ParseError
         ? `Invalid JSON in ${err.file}\n  ${err.message}`
@@ -102,7 +131,7 @@ function toolError(err: unknown) {
 }
 
 const server = new McpServer(
-  { name: 'i18n-keeper', version: '0.0.1' },
+  { name: 'i18n-keeper', version: '0.1.0' },
   { capabilities: { tools: {} } },
 );
 
@@ -111,7 +140,7 @@ server.registerTool(
   {
     title: 'Scan i18n project',
     description:
-      'Report which locale directory, layout and locales would be checked. Run this first when the project layout is unknown.',
+      'Report which locale directory, layout, locales and translation memory would be used. Run this first when the project layout is unknown.',
     inputSchema: commonInput,
     annotations: { readOnlyHint: true },
   },
@@ -119,6 +148,7 @@ server.registerTool(
     try {
       const config = buildConfig(args);
       const { layout, locales } = listLocales(config.localesDir);
+      const { memory, file } = openMemory(config, args.memory);
       return {
         content: [
           {
@@ -129,6 +159,7 @@ server.registerTool(
               `source: ${config.sourceLocale}`,
               `locales: ${locales.join(', ')}`,
               `placeholders: ${config.placeholderSyntaxes.join(', ')}`,
+              `memory: ${memory ? file : 'none (run i18n_sync to start tracking)'}`,
             ].join('\n'),
           },
         ],
@@ -149,33 +180,39 @@ server.registerTool(
     outputSchema: {
       sourceLocale: z.string(),
       sourceKeys: z.number(),
+      memoryLoaded: z.boolean(),
       locales: z.array(z.object(statShape)),
     },
     annotations: { readOnlyHint: true },
   },
   async (args) => {
     try {
-      const report = check(buildConfig(args));
-      const structuredContent = {
-        sourceLocale: report.sourceLocale,
-        sourceKeys: report.sourceKeys,
-        locales: report.stats.map((s) => ({
-          locale: s.locale,
-          coverage: Number(s.coverage.toFixed(4)),
-          missing: s.missing,
-          orphan: s.orphan,
-          errors: s.errors,
-          warnings: s.warnings,
-        })),
-      };
+      const config = buildConfig(args);
+      const { memory } = openMemory(config, args.memory);
+      const report = check(config, memory);
       return {
         content: [
           {
             type: 'text' as const,
-            text: `${report.sourceLocale} · ${report.sourceKeys} keys\n\n${renderTable(report)}`,
+            text:
+              `${report.sourceLocale} · ${report.sourceKeys} keys` +
+              `${report.memoryLoaded ? '' : ' · no memory'}\n\n${renderTable(report)}`,
           },
         ],
-        structuredContent,
+        structuredContent: {
+          sourceLocale: report.sourceLocale,
+          sourceKeys: report.sourceKeys,
+          memoryLoaded: report.memoryLoaded,
+          locales: report.stats.map((s) => ({
+            locale: s.locale,
+            coverage: Number(s.coverage.toFixed(4)),
+            missing: s.missing,
+            orphan: s.orphan,
+            stale: s.stale,
+            errors: s.errors,
+            warnings: s.warnings,
+          })),
+        },
       };
     } catch (err) {
       return toolError(err);
@@ -188,11 +225,14 @@ server.registerTool(
   {
     title: 'Lint locale files',
     description:
-      'Find missing keys, orphans, empty values, structure mismatches and broken placeholders across locales. Deterministic: nothing is translated and no network is used. Filter by locale, rule or severity, and page with offset.',
+      'Find missing keys, orphans, empty values, structure mismatches, broken placeholders and — when a translation memory exists — translations whose source has changed since (stale). Deterministic: nothing is translated and no network is used. Filter by locale, rule or severity, and page with offset.',
     inputSchema: {
       ...commonInput,
       locale: z.array(z.string()).optional().describe('Only these target locales.'),
-      rule: z.array(z.enum(RULE_IDS)).optional().describe('Only these rules.'),
+      rule: z
+        .array(z.enum(RULE_IDS))
+        .optional()
+        .describe('Only these rules. Naming a rule also enables it if it is off by default.'),
       severity: z.enum(['error', 'warning']).optional().describe('Only this severity.'),
       limit: z
         .number()
@@ -210,10 +250,12 @@ server.registerTool(
         .array(z.enum(ALL_SYNTAXES as [string, ...string[]]))
         .optional()
         .describe('Override placeholder syntaxes. Add "laravel" for :name projects.'),
+      noMemory: z.boolean().optional().describe('Ignore the memory; disables stale detection.'),
     },
     outputSchema: {
       sourceLocale: z.string(),
       sourceKeys: z.number(),
+      memoryLoaded: z.boolean(),
       errors: z.number(),
       warnings: z.number(),
       total: z.number(),
@@ -233,10 +275,16 @@ server.registerTool(
   async (args) => {
     try {
       const config = buildConfig(args);
-      const report = check(config);
+      const rules = new Set((args.rule ?? []) as RuleId[]);
+      // Naming a rule turns it on, so asking for an off-by-default rule works.
+      for (const rule of rules) {
+        if (config.rules[rule] === 'off') config.rules[rule] = 'warning';
+      }
+
+      const memory = args.noMemory ? null : openMemory(config, args.memory).memory;
+      const report = check(config, memory);
 
       const locales = new Set(args.locale ?? []);
-      const rules = new Set((args.rule ?? []) as RuleId[]);
       let findings = report.findings;
       if (locales.size > 0) findings = findings.filter((f) => locales.has(f.locale));
       if (rules.size > 0) findings = findings.filter((f) => rules.has(f.rule));
@@ -252,7 +300,8 @@ server.registerTool(
         locales.size > 0 ? report.stats.filter((s) => locales.has(s.locale)) : report.stats;
 
       const text = [
-        `${report.sourceLocale} · ${report.sourceKeys} keys · ${errors} errors · ${total - errors} warnings`,
+        `${report.sourceLocale} · ${report.sourceKeys} keys · ${errors} errors · ${total - errors} warnings` +
+          `${report.memoryLoaded ? '' : ' · no memory'}`,
         '',
         renderTable({ ...report, stats }),
         '',
@@ -264,6 +313,7 @@ server.registerTool(
         structuredContent: {
           sourceLocale: report.sourceLocale,
           sourceKeys: report.sourceKeys,
+          memoryLoaded: report.memoryLoaded,
           errors,
           warnings: total - errors,
           total,
@@ -276,6 +326,72 @@ server.registerTool(
             detail: f.detail,
           })),
         },
+      };
+    } catch (err) {
+      return toolError(err);
+    }
+  },
+);
+
+server.registerTool(
+  'i18n_sync',
+  {
+    title: 'Record translations in the memory',
+    description:
+      'Write the current translations into .i18n/memory.json so later source edits can be detected as stale. Without force this never clears a stale flag: entries whose translation is unchanged keep their old source hash. Run it after translations are updated, and once when adopting the tool.',
+    inputSchema: {
+      ...commonInput,
+      locale: z.array(z.string()).optional().describe('Only record these locales.'),
+      origin: z
+        .enum(['human', 'machine'])
+        .optional()
+        .describe('Who produced these translations. Default human, which also marks them reviewed.'),
+      force: z
+        .boolean()
+        .optional()
+        .describe('Re-record unchanged translations too, accepting them as current and clearing stale.'),
+    },
+    outputSchema: {
+      memory: z.string(),
+      created: z.number(),
+      updated: z.number(),
+      keptStale: z.number(),
+      unchanged: z.number(),
+      removed: z.number(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+  },
+  async (args) => {
+    try {
+      const config = buildConfig(args);
+      const file = memoryPath(config.root, args.memory);
+      const memory = loadMemory(file) ?? emptyMemory(config.sourceLocale);
+      const origin = args.origin ?? 'human';
+      const result = syncMemory(config, memory, {
+        origin,
+        reviewed: origin === 'human',
+        locales: args.locale,
+        force: args.force === true,
+      });
+      saveMemory(file, memory);
+
+      const note =
+        result.keptStale > 0 && !args.force
+          ? `\n${result.keptStale} translation(s) left stale on purpose — retranslate them, or sync with force to accept as-is.`
+          : '';
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text:
+              `memory ${file}\n` +
+              `created ${result.created}  updated ${result.updated}  ` +
+              `kept-stale ${result.keptStale}  unchanged ${result.unchanged}  removed ${result.removed}` +
+              note,
+          },
+        ],
+        structuredContent: { memory: file, ...result },
       };
     } catch (err) {
       return toolError(err);

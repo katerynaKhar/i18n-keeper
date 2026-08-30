@@ -1,6 +1,6 @@
 {
   "name": "i18n-keeper",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Deterministic i18n linter for locale files, as a CLI and an MCP server.",
   "type": "module",
   "bin": {
@@ -16,6 +16,7 @@
   "scripts": {
     "build": "tsc",
     "demo": "node dist/cli.js check fixtures/demo",
+    "walkthrough": "node scripts/stale-walkthrough.mjs",
     "smoke": "node scripts/mcp-smoke.mjs"
   },
   "keywords": [

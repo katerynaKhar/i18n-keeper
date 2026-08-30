@@ -1,10 +1,11 @@
 import { relative } from 'node:path';
-import type { Finding, Report } from './types.js';
+import type { Finding, LocaleStat, Report } from './types.js';
 
 const useColor =
   process.stdout.isTTY === true && !process.env['NO_COLOR'] && process.env['TERM'] !== 'dumb';
 
-const paint = (code: string) => (s: string) => (useColor ? `\u001b[${code}m${s}\u001b[0m` : s);
+const paint = (code: string) => (s: string) =>
+  useColor ? `\u001b[${code}m${s}\u001b[0m` : s;
 const dim = paint('2');
 const bold = paint('1');
 const red = paint('31');
@@ -16,52 +17,86 @@ function pad(s: string, width: number, align: 'left' | 'right' = 'left'): string
   return align === 'right' ? gap + s : s + gap;
 }
 
-function percent(value: number): string {
-  return `${(value * 100).toFixed(1)}%`;
-}
-
 function colorCoverage(value: number, text: string): string {
   if (value >= 0.99) return green(text);
   if (value >= 0.9) return yellow(text);
   return red(text);
 }
 
-function renderTable(report: Report): string[] {
-  const headers = ['locale', 'coverage', 'missing', 'orphan', 'errors', 'warnings'];
-  const rows = report.stats.map((s) => [
-    s.locale,
-    percent(s.coverage),
-    String(s.missing),
-    String(s.orphan),
-    String(s.errors),
-    String(s.warnings),
-  ]);
+interface Column {
+  header: string;
+  align: 'left' | 'right';
+  value: (s: LocaleStat) => string;
+  color?: (s: LocaleStat, text: string) => string;
+}
 
-  const widths = headers.map((h, i) =>
-    Math.max(h.length, ...rows.map((r) => (r[i] ?? '').length)),
-  );
-  const align: Array<'left' | 'right'> = ['left', 'right', 'right', 'right', 'right', 'right'];
-
-  const lines = [
-    dim(headers.map((h, i) => pad(h, widths[i]!, align[i])).join('  ')),
+function columns(report: Report): Column[] {
+  const cols: Column[] = [
+    { header: 'locale', align: 'left', value: (s) => s.locale },
+    {
+      header: 'coverage',
+      align: 'right',
+      value: (s) => `${(s.coverage * 100).toFixed(1)}%`,
+      color: (s, text) => colorCoverage(s.coverage, text),
+    },
+    { header: 'missing', align: 'right', value: (s) => String(s.missing) },
+    { header: 'orphan', align: 'right', value: (s) => String(s.orphan) },
   ];
 
-  for (const [index, row] of rows.entries()) {
-    const stat = report.stats[index]!;
-    const cells = row.map((cell, i) => {
-      const text = pad(cell ?? '', widths[i]!, align[i]);
-      if (i === 1) return colorCoverage(stat.coverage, text);
-      if (i === 4 && stat.errors > 0) return red(text);
-      if (i === 5 && stat.warnings > 0) return yellow(text);
-      return text;
+  // Without a translation memory there is nothing to compare against, so the
+  // column would only ever print zeroes.
+  if (report.memoryLoaded) {
+    cols.push({
+      header: 'stale',
+      align: 'right',
+      value: (s) => String(s.stale),
+      color: (s, text) => (s.stale > 0 ? yellow(text) : text),
     });
-    lines.push(cells.join('  '));
+  }
+
+  cols.push(
+    {
+      header: 'errors',
+      align: 'right',
+      value: (s) => String(s.errors),
+      color: (s, text) => (s.errors > 0 ? red(text) : text),
+    },
+    {
+      header: 'warnings',
+      align: 'right',
+      value: (s) => String(s.warnings),
+      color: (s, text) => (s.warnings > 0 ? yellow(text) : text),
+    },
+  );
+
+  return cols;
+}
+
+function renderTable(report: Report): string[] {
+  const cols = columns(report);
+  const cells = report.stats.map((s) => cols.map((c) => c.value(s)));
+  const widths = cols.map((c, i) =>
+    Math.max(c.header.length, ...cells.map((row) => (row[i] ?? '').length)),
+  );
+
+  const lines = [dim(cols.map((c, i) => pad(c.header, widths[i]!, c.align)).join('  '))];
+
+  for (const [rowIndex, row] of cells.entries()) {
+    const stat = report.stats[rowIndex]!;
+    lines.push(
+      cols
+        .map((c, i) => {
+          const text = pad(row[i] ?? '', widths[i]!, c.align);
+          return c.color ? c.color(stat, text) : text;
+        })
+        .join('  '),
+    );
   }
 
   return lines;
 }
 
-function renderFindings(findings: Finding[], root: string, limit: number): string[] {
+function renderFindings(findings: Finding[], limit: number): string[] {
   if (findings.length === 0) return [];
 
   const shown = findings.slice(0, limit);
@@ -81,12 +116,9 @@ function renderFindings(findings: Finding[], root: string, limit: number): strin
     const key = f.key.length > keyWidth ? `…${f.key.slice(-(keyWidth - 1))}` : f.key;
     lines.push(
       '  ' +
-        [
-          pad(f.locale, localeWidth),
-          pad(key, keyWidth),
-          dim(pad(f.rule, ruleWidth)),
-          f.detail,
-        ].join('  '),
+        [pad(f.locale, localeWidth), pad(key, keyWidth), dim(pad(f.rule, ruleWidth)), f.detail].join(
+          '  ',
+        ),
     );
   }
 
@@ -101,11 +133,19 @@ export function renderReport(report: Report, root: string, limit: number): strin
   const errors = report.findings.filter((f) => f.severity === 'error').length;
   const warnings = report.findings.length - errors;
 
+  const head = [
+    `${bold('i18n check')}`,
+    `source: ${bold(report.sourceLocale)}`,
+    `${report.sourceKeys} keys`,
+    dim(relative(root, report.localesDir) || report.localesDir),
+  ];
+  if (!report.memoryLoaded) head.push(dim('no memory'));
+
   const lines = [
-    `${bold('i18n check')} ${dim('·')} source: ${bold(report.sourceLocale)} ${dim('·')} ${report.sourceKeys} keys ${dim('·')} ${dim(relative(root, report.localesDir) || report.localesDir)}`,
+    head.join(` ${dim('·')} `),
     '',
     ...renderTable(report),
-    ...renderFindings(report.findings, root, limit),
+    ...renderFindings(report.findings, limit),
     '',
   ];
 

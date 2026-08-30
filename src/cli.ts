@@ -10,6 +10,7 @@ import {
   loadGlossary,
   type Glossary,
 } from './glossary.js';
+import { LimitsError, limitsPath, loadLimits, type Limits } from './lengths.js';
 import { PhpParseError } from './formats/php.js';
 import {
   MemoryError,
@@ -41,6 +42,8 @@ Options
   --no-memory           ignore the memory; disables stale detection
   --glossary <file>     glossary (default: .i18n/glossary.json)
   --no-glossary         ignore the glossary
+  --limits <file>       width limits (default: .i18n/limits.json)
+  --no-limits           ignore the width limits
 
 check
   --rule <rule>         only report this rule (repeatable)
@@ -73,6 +76,8 @@ const { values, positionals } = (() => {
         'no-memory': { type: 'boolean' },
         glossary: { type: 'string' },
         'no-glossary': { type: 'boolean' },
+        limits: { type: 'string' },
+        'no-limits': { type: 'boolean' },
         'ignore-identical': { type: 'string' },
         syntax: { type: 'string' },
         origin: { type: 'string' },
@@ -125,6 +130,14 @@ if (origin !== 'human' && origin !== 'machine') {
   fail('--origin expects "human" or "machine"');
 }
 
+/** An explicit --limits must exist; the default path is simply optional. */
+function openLimits(config: Config): { limits: Limits | null; file: string } {
+  const file = limitsPath(config.root, values.limits);
+  if (values['no-limits']) return { limits: null, file };
+  if (values.limits && !existsSync(file)) fail(`Limits file not found: ${file}`);
+  return { limits: loadLimits(file), file };
+}
+
 /** An explicit --glossary must exist; the default path is simply optional. */
 function openGlossary(config: Config): { glossary: Glossary | null; file: string } {
   const file = glossaryPath(config.root, values.glossary);
@@ -155,6 +168,7 @@ try {
     const { layout, locales } = listLocales(config.localesDir);
     const { memory, file } = openMemory(config);
     const glossaryInfo = openGlossary(config);
+    const limitsInfo = openLimits(config);
     const summary = {
       localesDir: config.localesDir,
       layout,
@@ -163,6 +177,7 @@ try {
       placeholderSyntaxes: config.placeholderSyntaxes,
       memory: memory ? file : null,
       glossary: glossaryInfo.glossary ? glossaryInfo.file : null,
+      limits: limitsInfo.limits ? limitsInfo.file : null,
     };
     if (values.json) {
       process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
@@ -178,6 +193,11 @@ try {
           `glossary     ${
             glossaryInfo.glossary
               ? `${relative(config.root, glossaryInfo.file)} (${glossaryInfo.glossary.terms.length} terms, ${glossaryInfo.glossary.doNotTranslate.length} verbatim)`
+              : 'none'
+          }`,
+          `limits       ${
+            limitsInfo.limits
+              ? `${relative(config.root, limitsInfo.file)} (${Object.keys(limitsInfo.limits.keys).length} keys, ${limitsInfo.limits.patterns.length} patterns)`
               : 'none'
           }`,
           '',
@@ -228,7 +248,8 @@ try {
 
   const { memory } = openMemory(config);
   const { glossary } = openGlossary(config);
-  const report = check(config, memory, glossary);
+  const { limits } = openLimits(config);
+  const report = check(config, memory, glossary, limits);
   if (localeFilter.size > 0 || ruleFilter.size > 0) {
     report.findings = report.findings.filter(
       (f) =>
@@ -255,6 +276,7 @@ try {
   if (err instanceof ScanError) fail(err.message);
   if (err instanceof MemoryError) fail(err.message);
   if (err instanceof GlossaryError) fail(err.message);
+  if (err instanceof LimitsError) fail(err.message);
   if (err instanceof ParseError) fail(`Invalid JSON in ${err.file}\n  ${err.message}`);
   if (err instanceof PhpParseError) fail(`Cannot parse ${err.file}\n  ${err.message}`);
   throw err;

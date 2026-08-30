@@ -11,6 +11,7 @@ import {
   loadGlossary,
   type Glossary,
 } from './glossary.js';
+import { LimitsError, limitsPath, loadLimits, type Limits } from './lengths.js';
 import { PhpParseError } from './formats/php.js';
 import {
   MemoryError,
@@ -37,6 +38,7 @@ const commonInput = {
   source: z.string().optional().describe('Source locale. Defaults to en, else the first found.'),
   memory: z.string().optional().describe('Translation memory file. Defaults to .i18n/memory.json.'),
   glossary: z.string().optional().describe('Glossary file. Defaults to .i18n/glossary.json.'),
+  limits: z.string().optional().describe('Width limits file. Defaults to .i18n/limits.json.'),
 };
 
 const statShape = {
@@ -55,6 +57,7 @@ interface CommonArgs {
   source?: string;
   memory?: string;
   glossary?: string;
+  limits?: string;
   ignoreIdentical?: string[];
   syntax?: string[];
 }
@@ -74,6 +77,13 @@ function openMemory(config: Config, explicit?: string): { memory: Memory | null;
   const file = memoryPath(config.root, explicit);
   if (explicit && !existsSync(file)) throw new MemoryError(`Memory file not found: ${file}`);
   return { memory: loadMemory(file), file };
+}
+
+/** An explicitly named limits file must exist; the default path is optional. */
+function openLimits(config: Config, explicit?: string): { limits: Limits | null; file: string } {
+  const file = limitsPath(config.root, explicit);
+  if (explicit && !existsSync(file)) throw new LimitsError(`Limits file not found: ${file}`);
+  return { limits: loadLimits(file), file };
 }
 
 /** An explicitly named glossary must exist; the default path is optional. */
@@ -135,7 +145,12 @@ function renderFindings(findings: Finding[], offset: number, total: number): str
 }
 
 function describeError(err: unknown): string {
-  if (err instanceof ScanError || err instanceof MemoryError || err instanceof GlossaryError) {
+  if (
+    err instanceof ScanError ||
+    err instanceof MemoryError ||
+    err instanceof GlossaryError ||
+    err instanceof LimitsError
+  ) {
     return err.message;
   }
   if (err instanceof ParseError) return `Invalid JSON in ${err.file}\n  ${err.message}`;
@@ -167,6 +182,7 @@ server.registerTool(
       const { layout, locales } = listLocales(config.localesDir);
       const { memory, file } = openMemory(config, args.memory);
       const glossaryInfo = openGlossary(config, args.glossary);
+      const limitsInfo = openLimits(config, args.limits);
       return {
         content: [
           {
@@ -181,6 +197,11 @@ server.registerTool(
               `glossary: ${
                 glossaryInfo.glossary
                   ? `${glossaryInfo.file} (${glossaryInfo.glossary.terms.length} terms, ${glossaryInfo.glossary.doNotTranslate.length} verbatim)`
+                  : 'none'
+              }`,
+              `limits: ${
+                limitsInfo.limits
+                  ? `${limitsInfo.file} (${Object.keys(limitsInfo.limits.keys).length} keys, ${limitsInfo.limits.patterns.length} patterns)`
                   : 'none'
               }`,
             ].join('\n'),
@@ -213,7 +234,8 @@ server.registerTool(
       const config = buildConfig(args);
       const { memory } = openMemory(config, args.memory);
       const { glossary } = openGlossary(config, args.glossary);
-      const report = check(config, memory, glossary);
+      const { limits } = openLimits(config, args.limits);
+      const report = check(config, memory, glossary, limits);
       return {
         content: [
           {
@@ -276,6 +298,7 @@ server.registerTool(
         .describe('Override placeholder syntaxes. Add "laravel" for :name projects.'),
       noMemory: z.boolean().optional().describe('Ignore the memory; disables stale detection.'),
       noGlossary: z.boolean().optional().describe('Ignore the glossary.'),
+      noLimits: z.boolean().optional().describe('Ignore the width limits.'),
     },
     outputSchema: {
       sourceLocale: z.string(),
@@ -308,7 +331,8 @@ server.registerTool(
 
       const memory = args.noMemory ? null : openMemory(config, args.memory).memory;
       const glossary = args.noGlossary ? null : openGlossary(config, args.glossary).glossary;
-      const report = check(config, memory, glossary);
+      const limits = args.noLimits ? null : openLimits(config, args.limits).limits;
+      const report = check(config, memory, glossary, limits);
 
       const locales = new Set(args.locale ?? []);
       let findings = report.findings;

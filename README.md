@@ -45,6 +45,8 @@ errors
 | `dnt_violation` | warning | A do-not-translate token did not survive |
 | `glossary_violation` | warning | A glossary term rendered with an unapproved word |
 | `inconsistent_translation` | off | One source string translated two different ways |
+| `length_over_max` | warning | Wider than the limit configured for that key |
+| `length_overflow` | off | Grew more than translation expansion normally allows |
 
 Errors break at runtime. Warnings only look bad — an outdated translation still
 renders, so `stale` is a warning even though it is the most interesting rule
@@ -95,6 +97,75 @@ the command says how many entries it deliberately left stale.
 **A hand-edited translation is not called stale.** If the target no longer
 matches what the memory recorded, someone already touched it and we cannot claim
 it is outdated — so the rule stays quiet rather than guessing.
+
+## String length
+
+German runs about a third longer than English, so a button that fits in the
+source overflows its container once translated — silently, because nothing
+throws.
+
+### Measured in display columns, not characters
+
+```
+"Subscribe"                .length   9   columns   9
+"Newsletter abonnieren"    .length  21   columns  21
+"ニュースレターを購読する"      .length  12   columns  24
+"설정"                      .length   2   columns   4
+```
+
+That Japanese string is twelve characters and would pass a limit of sixteen.
+It occupies twenty-four columns and does not fit. CJK and fullwidth characters
+count as two, combining marks and variation selectors as zero.
+
+Strings that are never displayed whole are not measured whole: an ICU plural
+holds every branch at once but shows one, so it is skipped entirely, and
+Laravel's `a|b` is measured at its widest segment.
+
+### Explicit limits
+
+`.i18n/limits.json`, checked against every locale including the source:
+
+```json
+{
+  "version": 1,
+  "keys": { "cta.subscribe": 16 },
+  "patterns": [{ "match": "nav.*.button", "max": 12 }]
+}
+```
+
+An exact key beats a pattern, the first matching pattern beats `default`, and
+anything unmatched is not checked. `*` matches any run of characters.
+
+```
+de  cta.subscribe        length_over_max  21 columns, limit 16
+de  nav.settings.button  length_over_max  13 columns, limit 12
+ja  cta.subscribe        length_over_max  24 columns, limit 16
+```
+
+### Expansion without configuration
+
+`length_overflow` needs no limits file: it compares each translation to its
+source and complains when it grew more than translation normally does. A single
+ratio would be useless — short strings expand far more in relative terms — so
+the allowance shrinks as strings grow:
+
+| Source width | Allowed |
+|---|---|
+| ≤ 10 columns | 300% |
+| ≤ 20 | 200% |
+| ≤ 30 | 180% |
+| ≤ 50 | 160% |
+| ≤ 70 | 140% |
+| longer | 130% |
+
+These are the conventional expansion rules of thumb, not a standard, and the
+rule is approximate by nature — so it is off until asked for with `--rule
+length_overflow`.
+
+```
+de  settings.delete  length_overflow  36 columns vs 14 in source — 257%, allowance 200%
+de  body.welcome     length_overflow  130 columns vs 93 in source — 140%, allowance 130%
+```
 
 ## Glossary and do-not-translate
 
@@ -258,6 +329,8 @@ i18n-keeper sync  [path]    record current translations in the memory
 --no-memory                 ignore the memory; disables stale detection
 --glossary <file>           glossary (default: .i18n/glossary.json)
 --no-glossary               ignore the glossary
+--limits <file>             width limits (default: .i18n/limits.json)
+--no-limits                 ignore the width limits
 
 check
 --rule <rule>               only report this rule, enabling it if off (repeatable)
@@ -310,9 +383,8 @@ without parsing the table.
 
 ## Not yet
 
-Machine translation of the stale/missing set, `.po` and YAML formats, and
-length-overflow checks. The core is a plain library, so all of those are
-additive.
+Machine translation of the stale/missing set, and `.po` and YAML formats. The
+core is a plain library, so both are additive.
 
 ## Development
 
@@ -327,8 +399,10 @@ npm run test:php       # our PHP parser vs the real interpreter (needs php)
 npm run test:laravel   # placeholder casing, flat PHP layout, parse errors
 npm run test:plurals   # ICU scanner and CLDR category resolution
 npm run test:glossary  # term matching across scripts, and glossary errors
+npm run test:lengths   # display width, limit resolution, limits-file errors
 npm run demo:plurals   # five locales with one, two, four and six plural forms
 npm run demo:glossary  # inflection, Cyrillic stems, CJK and brand names
+npm run demo:lengths   # German expansion and double-width Japanese
 ```
 
 MIT.

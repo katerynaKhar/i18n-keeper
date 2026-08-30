@@ -1,0 +1,20 @@
+{
+  "nav": {
+    "home.button": "Startseite",
+    "cart.button": "Warenkorb",
+    "settings.button": "Einstellungen"
+  },
+  "cta": {
+    "subscribe": "Newsletter abonnieren",
+    "checkout": "Zur Kasse"
+  },
+  "settings": {
+    "delete": "Benutzerkonto unwiderruflich löschen"
+  },
+  "body": {
+    "welcome": "Willkommen im Shop. Stöbern Sie in Tausenden von Produkten und erhalten Sie eine kostenlose Lieferung bei Ihrer ersten Bestellung."
+  },
+  "plural": {
+    "items": "{count, plural, one {# Artikel} other {# Artikel}}"
+  }
+}

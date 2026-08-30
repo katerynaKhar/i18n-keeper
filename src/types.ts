@@ -18,6 +18,8 @@ export const RULE_IDS = [
   'dnt_violation',
   'glossary_violation',
   'inconsistent_translation',
+  'length_over_max',
+  'length_overflow',
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -45,6 +47,9 @@ export const DEFAULT_RULES: Record<RuleId, RuleSetting> = {
   // Reusing one wording for a repeated source string is often deliberate, so
   // this is opt-in rather than noise by default.
   inconsistent_translation: 'off',
+  length_over_max: 'warning',
+  // Ratio-based and therefore approximate; asked for rather than assumed.
+  length_overflow: 'off',
 };
 
 export interface Finding {

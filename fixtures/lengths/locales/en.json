@@ -1,0 +1,20 @@
+{
+  "nav": {
+    "home.button": "Home",
+    "cart.button": "Cart",
+    "settings.button": "Settings"
+  },
+  "cta": {
+    "subscribe": "Subscribe",
+    "checkout": "Checkout"
+  },
+  "settings": {
+    "delete": "Delete account"
+  },
+  "body": {
+    "welcome": "Welcome to the store. Browse thousands of products and get free delivery on your first order."
+  },
+  "plural": {
+    "items": "{count, plural, one {# item} other {# items}}"
+  }
+}

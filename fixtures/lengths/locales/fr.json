@@ -1,0 +1,20 @@
+{
+  "nav": {
+    "home.button": "Accueil",
+    "cart.button": "Panier",
+    "settings.button": "Réglages"
+  },
+  "cta": {
+    "subscribe": "S'abonner",
+    "checkout": "Commander"
+  },
+  "settings": {
+    "delete": "Supprimer le compte"
+  },
+  "body": {
+    "welcome": "Bienvenue dans la boutique. Parcourez des milliers de produits et profitez de la livraison offerte sur votre première commande."
+  },
+  "plural": {
+    "items": "{count, plural, one {# article} many {# articles} other {# articles}}"
+  }
+}

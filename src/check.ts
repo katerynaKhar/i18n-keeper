@@ -4,6 +4,13 @@ import {
   missingVerbatim,
   type Glossary,
 } from './glossary.js';
+import {
+  allowanceFor,
+  limitFor,
+  measurable,
+  renderedWidth,
+  type Limits,
+} from './lengths.js';
 import { judge, type Memory } from './memory.js';
 import { diffPlaceholders, extractPlaceholders } from './placeholders.js';
 import {
@@ -76,6 +83,7 @@ function checkLocale(
   findings: Finding[],
   memory: Memory | null,
   glossary: Glossary | null,
+  limits: Limits | null,
 ): LocaleStat {
   const before = findings.length;
   const ignore = new Set(config.ignoreIdentical.map((s) => s.toLowerCase()));
@@ -178,6 +186,11 @@ function checkLocale(
       if (!variants.has(targetLeaf.value)) variants.set(targetLeaf.value, key);
     }
 
+    checkLength(
+      config, findings, target.locale, key, targetLeaf.file, limits, laravel,
+      targetLeaf.value, sourceLeaf.value,
+    );
+
     checkIcuCategories(
       config, findings, target.locale, categories, key, targetLeaf.file, targetLeaf.value,
     );
@@ -270,13 +283,57 @@ function checkLocale(
   };
 }
 
-/** A broken ICU string in the source locale is broken for every language. */
-function checkSource(config: Config, source: LocaleBundle, findings: Finding[]): void {
+/**
+ * Text is measured in display columns and only where measuring means something:
+ * an ICU plural holds every branch at once but shows one, and Laravel's pipes
+ * select between forms, so only the widest segment can ever appear.
+ */
+function checkLength(
+  config: Config,
+  findings: Finding[],
+  locale: string,
+  key: string,
+  file: string,
+  limits: Limits | null,
+  laravel: boolean,
+  value: string,
+  sourceValue: string | null,
+): void {
+  if (!measurable(value)) return;
+  const width = renderedWidth(value, laravel);
+
+  const max = limits ? limitFor(limits, key) : null;
+  if (max !== null && width > max) {
+    push(findings, config, 'length_over_max', locale, key, file,
+      `${width} columns, limit ${max}`);
+  }
+
+  if (sourceValue === null || !measurable(sourceValue)) return;
+  const sourceWidth = renderedWidth(sourceValue, laravel);
+  if (sourceWidth === 0) return;
+
+  const allowed = allowanceFor(sourceWidth);
+  if (width > sourceWidth * allowed) {
+    const percent = Math.round((width / sourceWidth) * 100);
+    push(findings, config, 'length_overflow', locale, key, file,
+      `${width} columns vs ${sourceWidth} in source — ${percent}%, allowance ${Math.round(allowed * 100)}%`);
+  }
+}
+
+/** A broken or oversized source string is broken for every language. */
+function checkSource(
+  config: Config,
+  source: LocaleBundle,
+  findings: Finding[],
+  limits: Limits | null,
+): void {
   const categories = categoriesFor(source.locale);
+  const laravel = config.placeholderSyntaxes.includes('laravel');
   for (const [key, leaf] of source.leaves) {
     checkIcuCategories(
       config, findings, source.locale, categories, key, leaf.file, leaf.value,
     );
+    checkLength(config, findings, source.locale, key, leaf.file, limits, laravel, leaf.value, null);
   }
 }
 
@@ -290,17 +347,18 @@ export function check(
   config: Config,
   memory: Memory | null = null,
   glossary: Glossary | null = null,
+  limits: Limits | null = null,
 ): Report {
   const source = loadBundle(config, config.sourceLocale);
   const findings: Finding[] = [];
   const stats: LocaleStat[] = [];
 
-  checkSource(config, source, findings);
+  checkSource(config, source, findings, limits);
 
   for (const locale of config.locales) {
     if (locale === config.sourceLocale) continue;
     stats.push(
-      checkLocale(config, source, loadBundle(config, locale), findings, memory, glossary),
+      checkLocale(config, source, loadBundle(config, locale), findings, memory, glossary, limits),
     );
   }
 

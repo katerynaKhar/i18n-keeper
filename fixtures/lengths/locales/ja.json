@@ -1,0 +1,20 @@
+{
+  "nav": {
+    "home.button": "ホーム",
+    "cart.button": "カート",
+    "settings.button": "設定"
+  },
+  "cta": {
+    "subscribe": "ニュースレターを購読する",
+    "checkout": "お支払い"
+  },
+  "settings": {
+    "delete": "アカウントを削除"
+  },
+  "body": {
+    "welcome": "ストアへようこそ。数千点の商品からお選びいただけます。初回のご注文は送料無料です。"
+  },
+  "plural": {
+    "items": "{count, plural, other {#件}}"
+  }
+}

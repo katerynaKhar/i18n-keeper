@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "keys": {
+    "cta.subscribe": 16,
+    "cta.checkout": 12,
+    "settings.delete": 24
+  },
+  "patterns": [
+    {
+      "match": "nav.*.button",
+      "max": 12
+    }
+  ]
+}

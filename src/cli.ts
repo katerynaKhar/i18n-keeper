@@ -199,6 +199,121 @@ function openMemory(config: Config): { memory: Memory | null; file: string } {
   return { memory: loadMemory(file), file };
 }
 
+/**
+ * Returns an exit code rather than calling process.exit: the HTTP connection
+ * pool is still closing when this returns, and exiting underneath it trips a
+ * libuv assertion on Windows.
+ */
+async function translateCommand(config: Config): Promise<number> {
+  const { memory: existing } = openMemory(config);
+  const { glossary } = openGlossary(config);
+  const { limits } = openLimits(config);
+
+  const report = check(config, existing, glossary, limits);
+  const source = loadBundle(config, config.sourceLocale);
+  let jobs = collectJobs(config, report.findings, source, glossary, limits, values.locale);
+
+  const total = jobs.length;
+  if (total === 0) {
+    process.stdout.write('Nothing to translate: no missing, empty or stale strings.\n');
+    return 0;
+  }
+  if (total > cap) jobs = jobs.slice(0, cap);
+
+  const locales = [...new Set(jobs.map((job) => job.locale))];
+  process.stdout.write(
+    [
+      `Sending ${jobs.length} string${jobs.length === 1 ? '' : 's'} ` +
+        `(${locales.join(', ')}) to ${values.model ?? DEFAULT_MODEL} at effort ${effort}.`,
+      total > cap ? `${total - cap} more are waiting; raise --cap to include them.` : '',
+    ]
+      .filter(Boolean)
+      .join('\n') + '\n',
+  );
+
+  const run = await runTranslation(config, jobs, glossary, {
+    model: values.model ?? DEFAULT_MODEL,
+    effort: effort as 'low' | 'medium' | 'high' | 'xhigh' | 'max',
+    batchSize,
+    onBatch: (locale, size, attempt) => {
+      process.stderr.write(
+        `  ${locale}: ${size} string${size === 1 ? '' : 's'}${attempt > 1 ? ' (retry)' : ''}\n`,
+      );
+    },
+  });
+
+  const proposals = run.proposals;
+
+  if (values.json) {
+    process.stdout.write(`${JSON.stringify(run, null, 2)}\n`);
+    return run.aborted || proposals.some((p) => !p.accepted) ? 1 : 0;
+  }
+
+  const accepted = proposals.filter((p) => p.accepted);
+  const rejected = proposals.filter((p) => !p.accepted);
+
+  for (const proposal of accepted) {
+    process.stdout.write(`  ${proposal.locale}  ${proposal.key}\n    ${proposal.value}\n`);
+  }
+  if (rejected.length > 0) {
+    process.stdout.write('\nrejected\n');
+    for (const proposal of rejected) {
+      process.stdout.write(
+        `  ${proposal.locale}  ${proposal.key}\n` +
+          `    ${proposal.value || '(nothing returned)'}\n` +
+          proposal.rejections.map((r) => `    ! ${r}\n`).join(''),
+      );
+    }
+  }
+
+  process.stdout.write(`\n${accepted.length} accepted, ${rejected.length} rejected\n`);
+
+  // An error that is not a content refusal stopped the run before the checks
+  // could say anything, so it must not be reported as a rejection.
+  if (run.aborted) {
+    const hint = /authentication|api[ _-]?key|credential|unauthor/i.test(run.aborted)
+      ? '\nSet ANTHROPIC_API_KEY, or sign in with `ant auth login`.'
+      : '';
+    process.stderr.write(
+      `Translation stopped: ${run.aborted}\n` +
+        `${jobs.length - proposals.length} of ${jobs.length} strings were never attempted.${hint}\n`,
+    );
+    return 2;
+  }
+
+  if (!values.write) {
+    process.stdout.write('Nothing written. Pass --write to apply the accepted ones.\n');
+    return rejected.length > 0 ? 1 : 0;
+  }
+
+  const applied = applyProposals(config, source, proposals);
+  const memoryFile = memoryPath(config.root, values.memory);
+  const memory = existing ?? emptyMemory(config.sourceLocale);
+  const now = new Date().toISOString();
+  for (const proposal of accepted) {
+    const byKey = (memory.entries[proposal.locale] ??= {});
+    byKey[proposal.key] = {
+      sourceHash: hashValue(proposal.source),
+      value: proposal.value,
+      origin: 'machine',
+      reviewed: false,
+      updatedAt: now,
+    };
+  }
+  saveMemory(memoryFile, memory);
+
+  process.stdout.write(
+    `Wrote ${applied.written} string${applied.written === 1 ? '' : 's'} to ` +
+      `${applied.files.length} file${applied.files.length === 1 ? '' : 's'}, ` +
+      `recorded as unreviewed machine output in ${relative(config.root, memoryFile)}.\n`,
+  );
+  for (const skip of applied.skipped) {
+    process.stdout.write(`  not written: ${skip.locale} ${skip.key} — ${skip.reason}\n`);
+  }
+
+  return rejected.length > 0 ? 1 : 0;
+}
+
 try {
   const config = detectProject(root, { localesDir: values.locales, sourceLocale: values.source });
   if (syntaxes && syntaxes.length > 0) config.placeholderSyntaxes = syntaxes;
@@ -283,149 +398,44 @@ try {
   }
 
   if (command === 'translate') {
-    const { memory: existing } = openMemory(config);
+    process.exitCode = await translateCommand(config);
+  } else {
+    const localeFilter = new Set(values.locale ?? []);
+    const ruleFilter = new Set((values.rule ?? []) as RuleId[]);
+
+    // Naming a rule explicitly turns it on; otherwise --rule untracked, which is
+    // off by default, would print nothing and look broken.
+    for (const rule of ruleFilter) {
+      if (config.rules[rule] === 'off') config.rules[rule] = 'warning';
+    }
+
+    const { memory } = openMemory(config);
     const { glossary } = openGlossary(config);
     const { limits } = openLimits(config);
-
-    const report = check(config, existing, glossary, limits);
-    const source = loadBundle(config, config.sourceLocale);
-    let jobs = collectJobs(config, report.findings, source, glossary, limits, values.locale);
-
-    const total = jobs.length;
-    if (total === 0) {
-      process.stdout.write('Nothing to translate: no missing, empty or stale strings.\n');
-      process.exit(0);
-    }
-    if (total > cap) jobs = jobs.slice(0, cap);
-
-    const locales = [...new Set(jobs.map((job) => job.locale))];
-    process.stdout.write(
-      [
-        `Sending ${jobs.length} string${jobs.length === 1 ? '' : 's'} ` +
-          `(${locales.join(', ')}) to ${values.model ?? DEFAULT_MODEL} at effort ${effort}.`,
-        total > cap ? `${total - cap} more are waiting; raise --cap to include them.` : '',
-      ]
-        .filter(Boolean)
-        .join('\n') + '\n',
-    );
-
-    const run = await runTranslation(config, jobs, glossary, {
-      model: values.model ?? DEFAULT_MODEL,
-      effort: effort as 'low' | 'medium' | 'high' | 'xhigh' | 'max',
-      batchSize,
-      onBatch: (locale, size, attempt) => {
-        process.stderr.write(
-          `  ${locale}: ${size} string${size === 1 ? '' : 's'}${attempt > 1 ? ' (retry)' : ''}\n`,
-        );
-      },
-    });
-
-    const proposals = run.proposals;
-
-    if (values.json) {
-      process.stdout.write(`${JSON.stringify(run, null, 2)}\n`);
-      process.exit(run.aborted || proposals.some((p) => !p.accepted) ? 1 : 0);
-    }
-
-    const accepted = proposals.filter((p) => p.accepted);
-    const rejected = proposals.filter((p) => !p.accepted);
-
-    for (const proposal of accepted) {
-      process.stdout.write(`  ${proposal.locale}  ${proposal.key}\n    ${proposal.value}\n`);
-    }
-    if (rejected.length > 0) {
-      process.stdout.write('\nrejected\n');
-      for (const proposal of rejected) {
-        process.stdout.write(
-          `  ${proposal.locale}  ${proposal.key}\n` +
-            `    ${proposal.value || '(nothing returned)'}\n` +
-            proposal.rejections.map((r) => `    ! ${r}\n`).join(''),
-        );
+    const report = check(config, memory, glossary, limits);
+    if (localeFilter.size > 0 || ruleFilter.size > 0) {
+      report.findings = report.findings.filter(
+        (f) =>
+          (localeFilter.size === 0 || localeFilter.has(f.locale)) &&
+          (ruleFilter.size === 0 || ruleFilter.has(f.rule)),
+      );
+      if (localeFilter.size > 0) {
+        report.stats = report.stats.filter((s) => localeFilter.has(s.locale));
       }
     }
 
-    process.stdout.write(`\n${accepted.length} accepted, ${rejected.length} rejected\n`);
-
-    // An error that is not a content refusal stopped the run before the checks
-    // could say anything, so it must not be reported as a rejection.
-    if (run.aborted) {
-      const hint = /authentication|api[ _-]?key|credential|unauthor/i.test(run.aborted)
-        ? '\nSet ANTHROPIC_API_KEY, or sign in with `ant auth login`.'
-        : '';
-      fail(
-        `Translation stopped: ${run.aborted}\n` +
-          `${jobs.length - proposals.length} of ${jobs.length} strings were never attempted.${hint}`,
-      );
+    if (values.json) {
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    } else {
+      process.stdout.write(`${renderReport(report, config.root, limit)}\n`);
+      if (ruleFilter.size > 0) {
+        // The table stays project-wide on purpose; only the list below it is filtered.
+        process.stdout.write(`(list filtered to: ${[...ruleFilter].join(', ')})\n`);
+      }
     }
 
-    if (!values.write) {
-      process.stdout.write('Nothing written. Pass --write to apply the accepted ones.\n');
-      process.exit(rejected.length > 0 ? 1 : 0);
-    }
-
-    const applied = applyProposals(config, source, proposals);
-    const memoryFile = memoryPath(config.root, values.memory);
-    const memory = existing ?? emptyMemory(config.sourceLocale);
-    const now = new Date().toISOString();
-    for (const proposal of accepted) {
-      const byKey = (memory.entries[proposal.locale] ??= {});
-      byKey[proposal.key] = {
-        sourceHash: hashValue(proposal.source),
-        value: proposal.value,
-        origin: 'machine',
-        reviewed: false,
-        updatedAt: now,
-      };
-    }
-    saveMemory(memoryFile, memory);
-
-    process.stdout.write(
-      `Wrote ${applied.written} string${applied.written === 1 ? '' : 's'} to ` +
-        `${applied.files.length} file${applied.files.length === 1 ? '' : 's'}, ` +
-        `recorded as unreviewed machine output in ${relative(config.root, memoryFile)}.\n`,
-    );
-    for (const skip of applied.skipped) {
-      process.stdout.write(`  not written: ${skip.locale} ${skip.key} — ${skip.reason}\n`);
-    }
-
-    process.exit(rejected.length > 0 ? 1 : 0);
+    process.exit(report.findings.some((f) => f.severity === 'error') ? 1 : 0);
   }
-
-  const localeFilter = new Set(values.locale ?? []);
-  const ruleFilter = new Set((values.rule ?? []) as RuleId[]);
-
-  // Naming a rule explicitly turns it on; otherwise --rule untracked, which is
-  // off by default, would print nothing and look broken.
-  for (const rule of ruleFilter) {
-    if (config.rules[rule] === 'off') config.rules[rule] = 'warning';
-  }
-
-  const { memory } = openMemory(config);
-  const { glossary } = openGlossary(config);
-  const { limits } = openLimits(config);
-  const report = check(config, memory, glossary, limits);
-  if (localeFilter.size > 0 || ruleFilter.size > 0) {
-    report.findings = report.findings.filter(
-      (f) =>
-        (localeFilter.size === 0 || localeFilter.has(f.locale)) &&
-        (ruleFilter.size === 0 || ruleFilter.has(f.rule)),
-    );
-    if (localeFilter.size > 0) {
-      report.stats = report.stats.filter((s) => localeFilter.has(s.locale));
-    }
-  }
-
-  if (values.json) {
-    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-  } else {
-    process.stdout.write(`${renderReport(report, config.root, limit)}\n`);
-    if (ruleFilter.size > 0) {
-      // The table stays project-wide on purpose; only the list below it is filtered.
-      process.stdout.write(`(list filtered to: ${[...ruleFilter].join(', ')})\n`);
-    }
-  }
-
-  process.exit(report.findings.some((f) => f.severity === 'error') ? 1 : 0);
 } catch (err) {
   if (err instanceof ScanError) fail(err.message);
   if (err instanceof MemoryError) fail(err.message);

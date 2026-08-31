@@ -404,7 +404,7 @@ Suitable for CI and pre-commit as-is.
 The same core is exposed over MCP, so an agent can audit locales itself.
 
 ```bash
-claude mcp add i18n-keeper -- node C:/Users/glize/work/i18n-keeper/dist/mcp.js
+claude mcp add i18n-keeper -- node /path/to/i18n-keeper/dist/mcp.js
 ```
 
 Or per project, in `.mcp.json`:
@@ -414,7 +414,7 @@ Or per project, in `.mcp.json`:
   "mcpServers": {
     "i18n-keeper": {
       "command": "node",
-      "args": ["C:/Users/glize/work/i18n-keeper/dist/mcp.js"]
+      "args": ["/path/to/i18n-keeper/dist/mcp.js"]
     }
   }
 }

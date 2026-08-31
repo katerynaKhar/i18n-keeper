@@ -24,6 +24,7 @@ import {
 import { ALL_SYNTAXES } from './placeholders.js';
 import { ScanError, detectProject, listLocales } from './scan.js';
 import { RULE_IDS, type Config, type Finding, type Report, type RuleId } from './types.js';
+import { VERSION } from './version.js';
 
 /**
  * Everything a tool returns lands in the agent's context, so the text stays
@@ -161,7 +162,7 @@ function toolError(err: unknown) {
 }
 
 const server = new McpServer(
-  { name: 'i18n-keeper', version: '0.1.0' },
+  { name: 'i18n-keeper', version: VERSION },
   { capabilities: { tools: {} } },
 );
 

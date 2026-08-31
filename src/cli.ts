@@ -45,8 +45,7 @@ import {
 import { ALL_SYNTAXES } from './placeholders.js';
 import { ScanError, detectProject, listLocales, loadBundle } from './scan.js';
 import { RULE_IDS, type Config, type RuleId } from './types.js';
-
-const VERSION = '0.1.0';
+import { VERSION } from './version.js';
 
 const HELP = `i18n-keeper ${VERSION}
 

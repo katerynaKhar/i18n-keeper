@@ -8,7 +8,8 @@
     "i18n-keeper-mcp": "dist/mcp.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "engines": {
     "node": ">=20"
@@ -60,7 +61,8 @@
     "test:fixtures": "node scripts/fixture-checks.mjs",
     "test": "npm run build && npm run test:version && npm run test:fixtures && npm run test:detection && npm run test:php && npm run test:laravel && npm run test:plurals && npm run test:glossary && npm run test:lengths && npm run test:formats && npm run test:translate && npm run test:apply && npm run test:writers && npm run test:review && npm run smoke && npm run walkthrough",
     "test:version": "node scripts/version-checks.mjs",
-    "test:detection": "node scripts/detection-checks.mjs"
+    "test:detection": "node scripts/detection-checks.mjs",
+    "prepublishOnly": "npm test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

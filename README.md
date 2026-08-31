@@ -360,6 +360,7 @@ i18n-keeper check [path]    lint locale files
 i18n-keeper scan  [path]    show what would be checked
 i18n-keeper sync  [path]    record current translations in the memory
 i18n-keeper translate [path]  fill the missing and stale set with Claude
+i18n-keeper apply <file> [path]  write proposals saved by translate
 
 --locales <dir>             locales directory (default: auto-detect)
 --source <locale>           source locale (default: en, else the first found)
@@ -389,6 +390,10 @@ translate
 --model <id>                default: claude-opus-5
 --effort <level>            low|medium|high|xhigh|max (default: medium)
 --only <kind>               fill | repair | refresh (repeatable; default: all)
+--save <file>               keep the proposals for a later apply
+
+apply
+--dry-run                   re-check the saved proposals and report, writing nothing
 ```
 
 Exit codes: `0` clean, `1` at least one error, `2` the tool itself failed.
@@ -438,8 +443,10 @@ So it is not trusted. **Every proposal goes back through the same checks the
 linter applies, and anything that fails is rejected rather than written.**
 
 ```bash
-i18n-keeper translate          # propose, validate, print — writes nothing
-i18n-keeper translate --write  # also apply the accepted ones
+i18n-keeper translate                     # propose, validate, print — writes nothing
+i18n-keeper translate --write             # also apply the accepted ones
+i18n-keeper translate --save review.json  # keep the proposals for later
+i18n-keeper apply review.json             # write them, without translating again
 ```
 
 The work list comes from the report, so the linter decides what needs doing —
@@ -511,6 +518,29 @@ The first attempt had dropped `{{amount}}` and translated *cart* as *chariot*
 against the glossary; the retry fixed both. The third string was too wide twice
 and was never written.
 
+### Look first, apply later, pay once
+
+`--save` keeps the proposals in a file that `apply` can write afterwards, so
+reviewing before applying does not mean paying for the translation twice. The
+file is written even when a run stops early, so partial work survives.
+
+**`apply` puts every proposal through the checks again.** A saved file can be
+days old and is editable by hand, so nothing is written on the strength of a
+check made earlier against files that may since have moved:
+
+```
+dropped
+  fr  cart.total   ! placeholders lost: {{amount}}
+  fr  gone         ! the key is no longer in the source locale
+  fr  moved        ! the source string changed after the proposal was made
+  fr  cart.empty   ! was rejected when proposed
+```
+
+The first of those is a translation someone edited inside the saved file after
+it had passed. It does not get written.
+
+`apply --dry-run` reports without writing.
+
 ### Nothing is written by accident
 
 Without `--write` the command only prints. With it, accepted translations are
@@ -558,6 +588,7 @@ npm run test:glossary  # term matching across scripts, and glossary errors
 npm run test:lengths   # display width, limit resolution, limits-file errors
 npm run test:formats   # gettext parsing, YAML typing traps, parse errors
 npm run test:translate # the translation gate and repairs, against a stub client
+npm run test:apply     # save/apply, and every way a saved proposal goes stale
 npm run demo:plurals   # five locales with one, two, four and six plural forms
 npm run demo:glossary  # inflection, Cyrillic stems, CJK and brand names
 npm run demo:lengths   # German expansion and double-width Japanese

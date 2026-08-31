@@ -2,7 +2,15 @@
 import { parseArgs } from 'node:util';
 import { relative } from 'node:path';
 import { existsSync } from 'node:fs';
-import { applyProposals, ApplyError } from './apply.js';
+import {
+  applyProposals,
+  loadRun,
+  recheck,
+  recordMachine,
+  saveRun,
+  ApplyError,
+  SAVE_VERSION,
+} from './apply.js';
 import { check } from './check.js';
 import { FormatError, describeFormatError } from './formats/error.js';
 import {
@@ -44,6 +52,7 @@ const HELP = `i18n-keeper ${VERSION}
   i18n-keeper scan  [path]    show what would be checked
   i18n-keeper sync  [path]    record current translations in the memory
   i18n-keeper translate [path]  fill the missing and stale set with Claude
+  i18n-keeper apply <file> [path]  write proposals saved by translate
 
 Options
   --locales <dir>       locales directory (default: auto-detect)
@@ -69,6 +78,8 @@ sync
 
 translate
   --write               apply accepted translations (otherwise nothing is written)
+  --save <file>         save the proposals so apply can write them later,
+                        without paying for the translation twice
   --cap <n>             most strings to translate in one run (default: ${DEFAULT_CAP})
   --batch <n>           strings per request (default: ${DEFAULT_BATCH})
   --model <id>          default: ${DEFAULT_MODEL}
@@ -80,6 +91,12 @@ translate
 
   Sends the source strings, their keys and their constraints to the Anthropic
   API. Every proposal is re-checked locally and rejected if it breaks a rule.
+
+apply
+  --dry-run             re-check the saved proposals and report, writing nothing
+
+  Every proposal is checked again before it is written: a saved file may be
+  days old, and it is editable by hand.
 
 Exits 1 when there is at least one error.`;
 
@@ -113,6 +130,8 @@ const { values, positionals } = (() => {
         batch: { type: 'string' },
         cap: { type: 'string' },
         only: { type: 'string', multiple: true },
+        save: { type: 'string' },
+        'dry-run': { type: 'boolean' },
         limit: { type: 'string' },
         json: { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
@@ -138,12 +157,18 @@ if (
   command !== 'check' &&
   command !== 'scan' &&
   command !== 'sync' &&
-  command !== 'translate'
+  command !== 'translate' &&
+  command !== 'apply'
 ) {
   fail(`Unknown command: ${command}\n\n${HELP}`);
 }
 
-const root = positionals[1] ?? process.cwd();
+// `apply` takes the proposals file first, then the optional project path.
+const proposalsFile = command === 'apply' ? positionals[1] : undefined;
+if (command === 'apply' && !proposalsFile) {
+  fail('apply needs a proposals file:\n  i18n-keeper apply <file> [path]');
+}
+const root = (command === 'apply' ? positionals[2] : positionals[1]) ?? process.cwd();
 
 const limit = values.limit === undefined ? 40 : Number.parseInt(values.limit, 10);
 if (!Number.isFinite(limit) || limit < 0) fail('--limit expects a non-negative number');
@@ -274,6 +299,17 @@ async function translateCommand(config: Config): Promise<number> {
 
   const proposals = run.proposals;
 
+  if (values.save) {
+    saveRun(values.save, {
+      version: SAVE_VERSION,
+      model: values.model ?? DEFAULT_MODEL,
+      sourceLocale: config.sourceLocale,
+      createdAt: new Date().toISOString(),
+      aborted: run.aborted,
+      proposals,
+    });
+  }
+
   if (values.json) {
     process.stdout.write(`${JSON.stringify(run, null, 2)}\n`);
     return run.aborted || proposals.some((p) => !p.accepted) ? 1 : 0;
@@ -314,24 +350,18 @@ async function translateCommand(config: Config): Promise<number> {
   }
 
   if (!values.write) {
-    process.stdout.write('Nothing written. Pass --write to apply the accepted ones.\n');
+    process.stdout.write(
+      values.save
+        ? `Nothing written. Saved to ${values.save}; apply with: i18n-keeper apply ${values.save}\n`
+        : 'Nothing written. Pass --write to apply, or --save <file> to apply later.\n',
+    );
     return rejected.length > 0 ? 1 : 0;
   }
 
   const applied = applyProposals(config, source, proposals);
   const memoryFile = memoryPath(config.root, values.memory);
   const memory = existing ?? emptyMemory(config.sourceLocale);
-  const now = new Date().toISOString();
-  for (const proposal of accepted) {
-    const byKey = (memory.entries[proposal.locale] ??= {});
-    byKey[proposal.key] = {
-      sourceHash: hashValue(proposal.source),
-      value: proposal.value,
-      origin: 'machine',
-      reviewed: false,
-      updatedAt: now,
-    };
-  }
+  recordMachine(memory, accepted, new Date().toISOString());
   saveMemory(memoryFile, memory);
 
   process.stdout.write(
@@ -397,6 +427,55 @@ try {
       );
     }
     process.exit(0);
+  }
+
+  if (command === 'apply') {
+    const saved = loadRun(proposalsFile!);
+    const { glossary } = openGlossary(config);
+    const { limits } = openLimits(config);
+    const source = loadBundle(config, config.sourceLocale);
+    const { ready, dropped } = recheck(config, source, glossary, limits, saved.proposals);
+
+    process.stdout.write(
+      `${saved.proposals.length} proposal${saved.proposals.length === 1 ? '' : 's'} from ` +
+        `${saved.model}${saved.createdAt ? `, saved ${saved.createdAt}` : ''}\n`,
+    );
+    for (const proposal of ready) {
+      process.stdout.write(
+        `  ${proposal.locale}  ${proposal.kind.padEnd(7)} ${proposal.key}\n    ${proposal.value}\n`,
+      );
+    }
+    if (dropped.length > 0) {
+      process.stdout.write('\ndropped\n');
+      for (const entry of dropped) {
+        process.stdout.write(
+          `  ${entry.proposal.locale}  ${entry.proposal.key}\n    ! ${entry.reason}\n`,
+        );
+      }
+    }
+    process.stdout.write(`\n${ready.length} to apply, ${dropped.length} dropped\n`);
+
+    if (values['dry-run']) {
+      process.stdout.write('Dry run: nothing written.\n');
+      process.exit(dropped.length > 0 ? 1 : 0);
+    }
+
+    const applied = applyProposals(config, source, ready);
+    const memoryFile = memoryPath(config.root, values.memory);
+    const memory = loadMemory(memoryFile) ?? emptyMemory(config.sourceLocale);
+    recordMachine(memory, ready, new Date().toISOString());
+    saveMemory(memoryFile, memory);
+
+    process.stdout.write(
+      `Wrote ${applied.written} string${applied.written === 1 ? '' : 's'} to ` +
+        `${applied.files.length} file${applied.files.length === 1 ? '' : 's'}, ` +
+        `recorded as unreviewed machine output in ${relative(config.root, memoryFile)}.\n`,
+    );
+    for (const skip of applied.skipped) {
+      process.stdout.write(`  not written: ${skip.locale} ${skip.key} — ${skip.reason}\n`);
+    }
+
+    process.exit(dropped.length > 0 ? 1 : 0);
   }
 
   if (command === 'sync') {

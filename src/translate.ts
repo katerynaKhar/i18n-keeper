@@ -185,10 +185,13 @@ export function collectJobs(
   return jobs;
 }
 
+/** What `validate` needs to judge a string; a full Job satisfies it. */
+export type Constraints = Pick<Job, 'source' | 'locale' | 'maxWidth'>;
+
 /** The same rules the linter enforces, applied to one proposed string. */
 export function validate(
   config: Config,
-  job: Job,
+  job: Constraints,
   proposed: string,
   glossary: Glossary | null,
 ): string[] {

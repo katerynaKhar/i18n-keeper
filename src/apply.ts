@@ -1,7 +1,10 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
+import type { Glossary } from './glossary.js';
+import { limitFor, type Limits } from './lengths.js';
+import { hashValue, type Memory } from './memory.js';
 import type { Config, LocaleBundle } from './types.js';
-import type { Proposal } from './translate.js';
+import { validate, type Proposal } from './translate.js';
 
 /**
  * Writing back is deliberately narrower than reading. JSON round-trips without
@@ -135,4 +138,126 @@ export function applyProposals(
   }
 
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Saved runs
+// ---------------------------------------------------------------------------
+
+export const SAVE_VERSION = 1;
+
+export interface SavedRun {
+  version: number;
+  model: string;
+  sourceLocale: string;
+  createdAt: string;
+  aborted: string | null;
+  proposals: Proposal[];
+}
+
+export function saveRun(file: string, run: SavedRun): void {
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify(run, null, 2)}\n`);
+}
+
+export function loadRun(file: string): SavedRun {
+  if (!existsSync(file)) throw new ApplyError(`Proposals file not found: ${file}`);
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(file, 'utf8'));
+  } catch (err) {
+    throw new ApplyError(
+      `Cannot read ${file}\n  ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  const run = parsed as Partial<SavedRun> | null;
+  if (!run || run.version !== SAVE_VERSION) {
+    throw new ApplyError(`Unrecognised proposals file ${file} (expected version ${SAVE_VERSION})`);
+  }
+  if (!Array.isArray(run.proposals)) throw new ApplyError(`${file} has no proposals array`);
+
+  return {
+    version: SAVE_VERSION,
+    model: run.model ?? 'unknown',
+    sourceLocale: run.sourceLocale ?? '',
+    createdAt: run.createdAt ?? '',
+    aborted: run.aborted ?? null,
+    proposals: run.proposals,
+  };
+}
+
+export interface Recheck {
+  ready: Proposal[];
+  dropped: Array<{ proposal: Proposal; reason: string }>;
+}
+
+/**
+ * The gate runs again at apply time.
+ *
+ * A saved file can be days old and is editable by hand, so nothing is written
+ * on the strength of a check made earlier against files that may since have
+ * moved. A proposal whose source string has changed is dropped rather than
+ * applied to text it was not written for.
+ */
+export function recheck(
+  config: Config,
+  source: LocaleBundle,
+  glossary: Glossary | null,
+  limits: Limits | null,
+  proposals: Proposal[],
+): Recheck {
+  const ready: Proposal[] = [];
+  const dropped: Array<{ proposal: Proposal; reason: string }> = [];
+
+  for (const proposal of proposals) {
+    if (!proposal.accepted) {
+      dropped.push({ proposal, reason: 'was rejected when proposed' });
+      continue;
+    }
+
+    const leaf = source.leaves.get(proposal.key);
+    if (!leaf) {
+      dropped.push({ proposal, reason: 'the key is no longer in the source locale' });
+      continue;
+    }
+    if (leaf.value !== proposal.source) {
+      dropped.push({ proposal, reason: 'the source string changed after the proposal was made' });
+      continue;
+    }
+
+    const problems = validate(
+      config,
+      {
+        source: leaf.value,
+        locale: proposal.locale,
+        maxWidth: limits ? limitFor(limits, proposal.key) : null,
+      },
+      proposal.value,
+      glossary,
+    );
+    if (problems.length > 0) {
+      dropped.push({ proposal, reason: problems.join('; ') });
+      continue;
+    }
+
+    ready.push(proposal);
+  }
+
+  return { ready, dropped };
+}
+
+/** Machine output is recorded unreviewed, whichever command wrote it. */
+export function recordMachine(memory: Memory, proposals: Proposal[], now: string): void {
+  for (const proposal of proposals) {
+    const byKey = (memory.entries[proposal.locale] ??= {});
+    byKey[proposal.key] = {
+      sourceHash: hashValue(proposal.source),
+      value: proposal.value,
+      origin: 'machine',
+      reviewed: false,
+      updatedAt: now,
+    };
+  }
 }

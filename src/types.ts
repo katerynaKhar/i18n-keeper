@@ -4,7 +4,6 @@ export type RuleSetting = Severity | 'off';
 export const RULE_IDS = [
   'missing_key',
   'orphan_key',
-  'empty_value',
   'structure_mismatch',
   'placeholder_missing',
   'placeholder_extra',
@@ -29,7 +28,6 @@ export type RuleId = (typeof RULE_IDS)[number];
 export const DEFAULT_RULES: Record<RuleId, RuleSetting> = {
   missing_key: 'error',
   orphan_key: 'warning',
-  empty_value: 'error',
   structure_mismatch: 'error',
   placeholder_missing: 'error',
   placeholder_extra: 'error',

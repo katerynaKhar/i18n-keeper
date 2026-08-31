@@ -31,8 +31,7 @@ errors
 
 | Rule | Default | What it catches |
 |---|---|---|
-| `missing_key` | error | Key in the source locale, absent in a target |
-| `empty_value` | error | Key present but the string is empty |
+| `missing_key` | error | Not translated: absent from a target, or present and empty |
 | `structure_mismatch` | error | Value on one side, object on the other |
 | `placeholder_missing` | error | `{{name}}`, `%s`, `<0>` dropped in translation |
 | `placeholder_extra` | error | Placeholder that does not exist in the source |
@@ -464,7 +463,7 @@ in three kinds:
 
 | Kind | From | Meaning |
 |---|---|---|
-| `fill` | `missing_key`, `empty_value` | No usable translation exists |
+| `fill` | `missing_key` | No usable translation exists — absent, or present and empty |
 | `repair` | see below | One exists and the linter proved it wrong |
 | `refresh` | `stale` | One exists and its source has moved |
 

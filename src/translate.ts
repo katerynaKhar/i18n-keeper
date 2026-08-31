@@ -29,7 +29,7 @@ export type JobKind = 'fill' | 'repair' | 'refresh';
 export const JOB_KINDS: readonly JobKind[] = ['fill', 'repair', 'refresh'];
 
 /** No usable translation exists. */
-const FILL_RULES = new Set(['missing_key', 'empty_value']);
+const FILL_RULES = new Set(['missing_key']);
 
 /**
  * Defects worth handing back to the model.

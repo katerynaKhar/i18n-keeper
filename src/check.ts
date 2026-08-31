@@ -185,7 +185,12 @@ function checkLocale(
     }
 
     if (targetLeaf.value.trim() === '' && sourceLeaf.value.trim() !== '') {
-      push(findings, config, 'empty_value', target.locale, key, targetLeaf.file, 'empty string');
+      // An empty string is not a translation. gettext spells that as an empty
+      // msgstr and i18next as "", and both mean the same as no key at all —
+      // so they are one finding, not two ideas wearing different names.
+      missing++;
+      push(findings, config, 'missing_key', target.locale, key, targetLeaf.file,
+        'present but empty');
       // Nothing further can be true of an empty string: it has no placeholders
       // to have lost, no plural forms to be missing, no width to overflow.
       continue;

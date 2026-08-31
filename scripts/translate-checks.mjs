@@ -58,7 +58,7 @@ for (const job of jobs) {
   if (job.placeholders.length) bits.push(`placeholders ${job.placeholders.join(',')}`);
   if (job.glossary.length) bits.push(`glossary ${job.glossary.map((g) => g.term).join(',')}`);
   if (job.maxWidth !== null) bits.push(`max ${job.maxWidth} columns`);
-  console.log(`  ${job.reason.padEnd(8)} ${job.key.padEnd(16)} ${bits.join('  ')}`);
+  console.log(`  ${job.kind.padEnd(8)} ${job.key.padEnd(16)} ${bits.join('  ')}`);
 }
 
 console.log('\n=== validate() in isolation ===');

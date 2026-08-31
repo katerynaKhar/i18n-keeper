@@ -388,6 +388,7 @@ translate
 --batch <n>                 strings per request (default: 20)
 --model <id>                default: claude-opus-5
 --effort <level>            low|medium|high|xhigh|max (default: medium)
+--only <kind>               fill | repair | refresh (repeatable; default: all)
 ```
 
 Exit codes: `0` clean, `1` at least one error, `2` the tool itself failed.
@@ -441,8 +442,50 @@ i18n-keeper translate          # propose, validate, print — writes nothing
 i18n-keeper translate --write  # also apply the accepted ones
 ```
 
-The work list is the report's own `missing_key`, `empty_value` and `stale`
-findings, so the linter decides what needs translating.
+The work list comes from the report, so the linter decides what needs doing —
+in three kinds:
+
+| Kind | From | Meaning |
+|---|---|---|
+| `fill` | `missing_key`, `empty_value` | No usable translation exists |
+| `repair` | see below | One exists and the linter proved it wrong |
+| `refresh` | `stale` | One exists and its source has moved |
+
+Narrow it with `--only fill`, `--only repair`, `--only refresh` (repeatable).
+
+### What counts as repairable
+
+A defect is only handed back to the model if the local check can **confirm the
+repair afterwards**. A fix nobody can verify is a fix nobody should trust, so
+those findings are left for a human. That single rule picks the set:
+
+`placeholder_missing`, `placeholder_extra`, `icu_syntax_error`,
+`plural_missing_category`, `glossary_violation`, `dnt_violation`,
+`length_over_max`.
+
+It leaves out `identical_to_source` — often correct, since "Email" really is
+"Email" in French, and forcing a change would make it worse — along with
+`plural_extra_category` and `plural_selector_lost`, which the single-string
+validator does not check and therefore could not confirm.
+
+A repair is sent with the wording someone already chose and the exact findings
+against it, and asked to change only what those require:
+
+```json
+{
+  "key": "order.thanks",
+  "source": "Thanks, {{name}}!",
+  "placeholders_that_must_survive": ["{{name}}"],
+  "current_translation": "Dziękujemy, {{imie}}!",
+  "problems_to_fix": [
+    "placeholder_extra: {{imie}} not in source",
+    "placeholder_missing: {{name}} lost"
+  ]
+}
+```
+
+One key broken several ways carries every reason at once, and a repair that does
+not actually repair is rejected like any other proposal.
 
 ### The constraints go in, not just on afterwards
 
@@ -514,7 +557,7 @@ npm run test:plurals   # ICU scanner and CLDR category resolution
 npm run test:glossary  # term matching across scripts, and glossary errors
 npm run test:lengths   # display width, limit resolution, limits-file errors
 npm run test:formats   # gettext parsing, YAML typing traps, parse errors
-npm run test:translate # the translation gate, against a stub client (no network)
+npm run test:translate # the translation gate and repairs, against a stub client
 npm run demo:plurals   # five locales with one, two, four and six plural forms
 npm run demo:glossary  # inflection, Cyrillic stems, CJK and brand names
 npm run demo:lengths   # German expansion and double-width Japanese

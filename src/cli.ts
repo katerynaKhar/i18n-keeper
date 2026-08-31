@@ -29,6 +29,8 @@ import {
   DEFAULT_BATCH,
   DEFAULT_CAP,
   DEFAULT_MODEL,
+  JOB_KINDS,
+  type JobKind,
 } from './translate.js';
 import { ALL_SYNTAXES } from './placeholders.js';
 import { ScanError, detectProject, listLocales, loadBundle } from './scan.js';
@@ -71,6 +73,10 @@ translate
   --batch <n>           strings per request (default: ${DEFAULT_BATCH})
   --model <id>          default: ${DEFAULT_MODEL}
   --effort <level>      low|medium|high|xhigh|max (default: medium)
+  --only <kind>         fill | repair | refresh (repeatable; default: all three)
+                        fill    strings with no translation yet
+                        repair  translations the linter proved wrong
+                        refresh translations whose source has moved
 
   Sends the source strings, their keys and their constraints to the Anthropic
   API. Every proposal is re-checked locally and rejected if it breaks a rule.
@@ -106,6 +112,7 @@ const { values, positionals } = (() => {
         effort: { type: 'string' },
         batch: { type: 'string' },
         cap: { type: 'string' },
+        only: { type: 'string', multiple: true },
         limit: { type: 'string' },
         json: { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
@@ -172,6 +179,12 @@ function positive(flag: string, raw: string | undefined, fallback: number): numb
   return parsed;
 }
 
+for (const kind of values.only ?? []) {
+  if (!(JOB_KINDS as readonly string[]).includes(kind)) {
+    fail(`--only expects one of: ${JOB_KINDS.join(', ')}`);
+  }
+}
+
 const cap = positive('--cap', values.cap, DEFAULT_CAP);
 const batchSize = positive('--batch', values.batch, DEFAULT_BATCH);
 
@@ -211,20 +224,37 @@ async function translateCommand(config: Config): Promise<number> {
 
   const report = check(config, existing, glossary, limits);
   const source = loadBundle(config, config.sourceLocale);
-  let jobs = collectJobs(config, report.findings, source, glossary, limits, values.locale);
+  let jobs = collectJobs(
+    config,
+    report.findings,
+    source,
+    glossary,
+    limits,
+    values.locale,
+    values.only as JobKind[] | undefined,
+  );
 
   const total = jobs.length;
   if (total === 0) {
-    process.stdout.write('Nothing to translate: no missing, empty or stale strings.\n');
+    process.stdout.write('Nothing to do: no strings to fill, repair or refresh.\n');
     return 0;
   }
   if (total > cap) jobs = jobs.slice(0, cap);
 
   const locales = [...new Set(jobs.map((job) => job.locale))];
+  const breakdown = JOB_KINDS.map((kind) => ({
+    kind,
+    count: jobs.filter((job) => job.kind === kind).length,
+  }))
+    .filter((entry) => entry.count > 0)
+    .map((entry) => `${entry.count} to ${entry.kind}`)
+    .join(', ');
+
   process.stdout.write(
     [
       `Sending ${jobs.length} string${jobs.length === 1 ? '' : 's'} ` +
-        `(${locales.join(', ')}) to ${values.model ?? DEFAULT_MODEL} at effort ${effort}.`,
+        `(${locales.join(', ')}) to ${values.model ?? DEFAULT_MODEL} at effort ${effort}: ` +
+        `${breakdown}.`,
       total > cap ? `${total - cap} more are waiting; raise --cap to include them.` : '',
     ]
       .filter(Boolean)
@@ -253,13 +283,15 @@ async function translateCommand(config: Config): Promise<number> {
   const rejected = proposals.filter((p) => !p.accepted);
 
   for (const proposal of accepted) {
-    process.stdout.write(`  ${proposal.locale}  ${proposal.key}\n    ${proposal.value}\n`);
+    process.stdout.write(
+      `  ${proposal.locale}  ${proposal.kind.padEnd(7)} ${proposal.key}\n    ${proposal.value}\n`,
+    );
   }
   if (rejected.length > 0) {
     process.stdout.write('\nrejected\n');
     for (const proposal of rejected) {
       process.stdout.write(
-        `  ${proposal.locale}  ${proposal.key}\n` +
+        `  ${proposal.locale}  ${proposal.kind.padEnd(7)} ${proposal.key}\n` +
           `    ${proposal.value || '(nothing returned)'}\n` +
           proposal.rejections.map((r) => `    ! ${r}\n`).join(''),
       );

@@ -1,6 +1,8 @@
 # i18n-keeper
 
+[![npm](https://img.shields.io/npm/v/@katerynakhar/i18n-keeper)](https://www.npmjs.com/package/@katerynakhar/i18n-keeper)
 [![CI](https://github.com/katerynaKhar/i18n-keeper/actions/workflows/ci.yml/badge.svg)](https://github.com/katerynaKhar/i18n-keeper/actions/workflows/ci.yml)
+[![node](https://img.shields.io/node/v/@katerynakhar/i18n-keeper)](https://nodejs.org)
 
 Deterministic linter for JSON, Laravel PHP, gettext and YAML locale files, as a
 CLI and an MCP server. No LLM, no network, no API key — every finding is mechanically

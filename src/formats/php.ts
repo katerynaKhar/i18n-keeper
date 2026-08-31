@@ -26,8 +26,12 @@ export interface ValueSpan {
   end: number;
 }
 
+/** `array(...)` still turns up in older projects; new entries should match. */
+export type ArrayStyle = 'bracket' | 'array';
+
 /** Where a new entry can be inserted into an existing array. */
 export interface ArraySlot {
+  style: ArrayStyle;
   /** Just past the last entry's value, or just past the opening bracket. */
   insertAt: number;
   /** Indentation the entries use, so an inserted one lines up. */
@@ -229,6 +233,7 @@ class Parser {
     }
 
     this.layout.arrays.set(path, {
+      style: closing === ')' ? 'array' : 'bracket',
       insertAt: entries.length === 0 ? afterOpen : lastValueEnd,
       indent: indent || '    ',
       hasTrailingComma,

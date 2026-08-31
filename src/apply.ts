@@ -5,7 +5,7 @@ import { limitFor, type Limits } from './lengths.js';
 import { hashValue, type Memory } from './memory.js';
 import type { Config, LocaleBundle } from './types.js';
 import { writeJsonLocale } from './formats/json-write.js';
-import { writePhpLocale } from './formats/php-write.js';
+import { blankPhpFile, writePhpLocale } from './formats/php-write.js';
 import { writePoLocale } from './formats/po-write.js';
 import { writeYamlLocale } from './formats/yaml-write.js';
 import type { Edit, LocaleWriter } from './formats/write.js';
@@ -24,6 +24,8 @@ export interface Destination {
   file: string;
   /** The key as that file spells it, with any file-level namespace removed. */
   key: string;
+  /** The source-locale file this one mirrors, used when creating it. */
+  sourceFile: string;
 }
 
 const WRITERS = new Map<string, LocaleWriter>([
@@ -36,15 +38,19 @@ const WRITERS = new Map<string, LocaleWriter>([
 ]);
 
 /**
- * Formats whose empty form is unambiguous, so a locale file that does not exist
- * yet can be created. A YAML file's shape depends on whether the project nests
- * under a locale root, and a gettext catalogue needs a header declaring its own
- * plural rules — neither can be invented, so those must already exist.
+ * An empty file for a locale that has none yet, or null when its shape cannot
+ * be known. A YAML file depends on whether the project nests under a locale
+ * root, and a gettext catalogue needs a header declaring the language's own
+ * plural rules — neither can be invented.
  */
-const CREATABLE = new Map<string, string>([
-  ['.json', '{}\n'],
-  ['.php', '<?php\n\nreturn [\n];\n'],
-]);
+function blankFileFor(extension: string, sourceFile: string): string | null {
+  if (extension === '.json') return '{}\n';
+  if (extension === '.php') {
+    const source = existsSync(sourceFile) ? readFileSync(sourceFile, 'utf8') : null;
+    return blankPhpFile(source);
+  }
+  return null;
+}
 
 function extensionOf(file: string): string {
   const at = file.lastIndexOf('.');
@@ -106,7 +112,7 @@ export function destinationFor(
   if (!WRITERS.has(extension)) return null;
 
   if (config.layout === 'flat') {
-    return { file: join(config.localesDir, `${locale}${extension}`), key };
+    return { file: join(config.localesDir, `${locale}${extension}`), key, sourceFile: from };
   }
 
   const localeRoot = join(config.localesDir, config.sourceLocale);
@@ -114,7 +120,7 @@ export function destinationFor(
   const namespace = namespaceOf(config, from);
   const inner = namespace && key.startsWith(`${namespace}.`) ? key.slice(namespace.length + 1) : key;
 
-  return { file: join(config.localesDir, locale, withinLocale), key: inner };
+  return { file: join(config.localesDir, locale, withinLocale), key: inner, sourceFile: from };
 }
 
 export interface ApplyResult {
@@ -130,7 +136,7 @@ export function applyProposals(
   proposals: Proposal[],
 ): ApplyResult {
   const result: ApplyResult = { written: 0, files: [], skipped: [] };
-  const byFile = new Map<string, { locale: string; edits: Edit[] }>();
+  const byFile = new Map<string, { locale: string; sourceFile: string; edits: Edit[] }>();
 
   for (const proposal of proposals) {
     if (!proposal.accepted) continue;
@@ -148,10 +154,16 @@ export function applyProposals(
     const bucket = byFile.get(destination.file);
     const edit: Edit = { key: destination.key, value: proposal.value };
     if (bucket) bucket.edits.push(edit);
-    else byFile.set(destination.file, { locale: proposal.locale, edits: [edit] });
+    else {
+      byFile.set(destination.file, {
+        locale: proposal.locale,
+        sourceFile: destination.sourceFile,
+        edits: [edit],
+      });
+    }
   }
 
-  for (const [file, { locale, edits }] of byFile) {
+  for (const [file, { locale, sourceFile, edits }] of byFile) {
     const extension = extensionOf(file);
     const writer = WRITERS.get(extension)!;
 
@@ -159,8 +171,8 @@ export function applyProposals(
     if (existsSync(file)) {
       content = readFileSync(file, 'utf8');
     } else {
-      const blank = CREATABLE.get(extension);
-      if (blank === undefined) {
+      const blank = blankFileFor(extension, sourceFile);
+      if (blank === null) {
         for (const edit of edits) {
           result.skipped.push({
             locale,

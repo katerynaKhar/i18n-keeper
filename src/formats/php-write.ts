@@ -1,4 +1,4 @@
-import { parsePhpLayout, type ArraySlot } from './php.js';
+import { parsePhpLayout, type ArraySlot, type ArrayStyle } from './php.js';
 import { spliceAll, type Edit, type WriteOutcome } from './write.js';
 
 /** Nested levels that have to be created get this much extra indentation. */
@@ -46,15 +46,34 @@ export function phpLiteral(value: string): string {
   return `"${out}"`;
 }
 
+const OPEN: Record<ArrayStyle, string> = { bracket: '[', array: 'array(' };
+const CLOSE: Record<ArrayStyle, string> = { bracket: ']', array: ')' };
+
 /** `'a' => ['b' => 'value'],` for however many levels are missing. */
-function nestedEntry(keys: string[], value: string, indent: string): string {
+function nestedEntry(keys: string[], value: string, indent: string, style: ArrayStyle): string {
   const [head, ...rest] = keys;
   if (rest.length === 0) return `${indent}${phpLiteral(head!)} => ${phpLiteral(value)},`;
   return [
-    `${indent}${phpLiteral(head!)} => [`,
-    nestedEntry(rest, value, indent + INDENT_STEP),
-    `${indent}],`,
+    `${indent}${phpLiteral(head!)} => ${OPEN[style]}`,
+    nestedEntry(rest, value, indent + INDENT_STEP, style),
+    `${indent}${CLOSE[style]},`,
   ].join('\n');
+}
+
+/**
+ * An empty language file shaped like the one it is being translated from, so a
+ * project written with `array()` does not suddenly gain a file that is not.
+ */
+export function blankPhpFile(sourceContent: string | null): string {
+  let style: ArrayStyle = 'bracket';
+  if (sourceContent !== null) {
+    try {
+      style = parsePhpLayout(sourceContent, '<source>').layout.arrays.get('')?.style ?? 'bracket';
+    } catch {
+      // An unreadable source is no reason to refuse to create the target.
+    }
+  }
+  return `<?php\n\nreturn ${OPEN[style]}\n${CLOSE[style]};\n`;
 }
 
 /** The deepest array that already exists on the way to `key`. */
@@ -102,7 +121,7 @@ export function writePhpLocale(
       continue;
     }
 
-    const entry = nestedEntry(parent.remaining, edit.value, parent.slot.indent);
+    const entry = nestedEntry(parent.remaining, edit.value, parent.slot.indent, parent.slot.style);
     const bucket = insertions.get(parent.slot.insertAt);
     if (bucket) bucket.lines.push(entry);
     else insertions.set(parent.slot.insertAt, { slot: parent.slot, lines: [entry] });

@@ -63,6 +63,13 @@ console.log('=== Laravel PHP ===');
     }),
   );
   check('missing file created', created.required === 'Pole :attribute jest wymagane.');
+
+  // en/validation.php is written with array(); the file created beside it
+  // should not suddenly be the odd one out.
+  const madeUp = readFileSync(`${root}/lang/pl/validation.php`, 'utf8');
+  check('created file mirrors array() style', madeUp.includes('return array('));
+  check('no blank line before the close', !/\n\s*\n\);/.test(madeUp));
+  check('bracket style kept where the source uses it', fr.includes("'cart' => ["));
 }
 
 console.log('\n=== Rails YAML ===');

@@ -1,5 +1,7 @@
 # i18n-keeper
 
+[![CI](https://github.com/katerynaKhar/i18n-keeper/actions/workflows/ci.yml/badge.svg)](https://github.com/katerynaKhar/i18n-keeper/actions/workflows/ci.yml)
+
 Deterministic linter for JSON, Laravel PHP, gettext and YAML locale files, as a
 CLI and an MCP server. No LLM, no network, no API key — every finding is mechanically
 verifiable, which is the point: you can trust the report in languages you do not

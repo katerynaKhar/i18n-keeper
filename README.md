@@ -6,7 +6,7 @@ verifiable, which is the point: you can trust the report in languages you do not
 read.
 
 ```bash
-npx i18n-keeper check
+npx @katerynakhar/i18n-keeper check
 ```
 
 ```

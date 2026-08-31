@@ -19,5 +19,9 @@ export function readJsonLocale(
   } catch (err) {
     throw new ParseError(file, err instanceof Error ? err.message : String(err));
   }
+  if (Array.isArray(parsed)) {
+    target.skipped.push({ file, reason: 'the file holds a list, not keyed translations' });
+    return;
+  }
   flattenValue(parsed, namespace, file, target.leaves, target.containers);
 }

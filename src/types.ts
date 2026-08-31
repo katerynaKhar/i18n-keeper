@@ -32,7 +32,9 @@ export const DEFAULT_RULES: Record<RuleId, RuleSetting> = {
   structure_mismatch: 'error',
   placeholder_missing: 'error',
   placeholder_extra: 'error',
-  identical_to_source: 'warning',
+  // Correct far more often than not on real data — country names, product
+  // names, borrowed words — so it is asked for rather than assumed.
+  identical_to_source: 'off',
   stale: 'warning',
   // Every key is untracked until the first sync, so this one is opt-in.
   untracked: 'off',
@@ -73,6 +75,8 @@ export interface Leaf {
 
 /** What a format reader fills in while reading one file. */
 export interface ReadTarget {
+  /** Files that carry no translatable keys, with why they were passed over. */
+  skipped: Array<{ file: string; reason: string }>;
   leaves: Map<string, Leaf>;
   containers: Set<string>;
   /** gettext plural entries: base key -> number of msgstr forms present. */
@@ -85,6 +89,7 @@ export interface ReadTarget {
 export interface LocaleBundle {
   locale: string;
   files: string[];
+  skipped: Array<{ file: string; reason: string }>;
   leaves: Map<string, Leaf>;
   /** Keys that hold an object or array rather than a value. */
   containers: Set<string>;

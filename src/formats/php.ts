@@ -406,5 +406,9 @@ export function readPhpLocale(
   target: ReadTarget,
 ): void {
   const parsed = parsePhp(readFileSync(file, 'utf8'), file);
+  if (Array.isArray(parsed)) {
+    target.skipped.push({ file, reason: 'the file holds a list, not keyed translations' });
+    return;
+  }
   flattenValue(parsed, namespace, file, target.leaves, target.containers);
 }

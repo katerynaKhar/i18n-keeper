@@ -1,6 +1,6 @@
 {
   "name": "@katerynakhar/i18n-keeper",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "description": "Deterministic i18n linter for JSON, Laravel PHP, gettext and YAML locale files, as a CLI and an MCP server.",
   "type": "module",
   "bin": {
@@ -58,8 +58,9 @@
     "test:writers": "node scripts/writer-checks.mjs",
     "test:review": "node scripts/review-checks.mjs",
     "test:fixtures": "node scripts/fixture-checks.mjs",
-    "test": "npm run build && npm run test:version && npm run test:fixtures && npm run test:php && npm run test:laravel && npm run test:plurals && npm run test:glossary && npm run test:lengths && npm run test:formats && npm run test:translate && npm run test:apply && npm run test:writers && npm run test:review && npm run smoke && npm run walkthrough",
-    "test:version": "node scripts/version-checks.mjs"
+    "test": "npm run build && npm run test:version && npm run test:fixtures && npm run test:detection && npm run test:php && npm run test:laravel && npm run test:plurals && npm run test:glossary && npm run test:lengths && npm run test:formats && npm run test:translate && npm run test:apply && npm run test:writers && npm run test:review && npm run smoke && npm run walkthrough",
+    "test:version": "node scripts/version-checks.mjs",
+    "test:detection": "node scripts/detection-checks.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

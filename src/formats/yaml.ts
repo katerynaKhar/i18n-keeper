@@ -52,5 +52,11 @@ export function readYamlLocale(
   }
 
   if (parsed === null || parsed === undefined) return; // an empty document
-  flattenValue(stripLocaleRoot(parsed, locale), namespace, file, target.leaves, target.containers);
+
+  const inner = stripLocaleRoot(parsed, locale);
+  if (Array.isArray(inner)) {
+    target.skipped.push({ file, reason: 'the file holds a list, not keyed translations' });
+    return;
+  }
+  flattenValue(inner, namespace, file, target.leaves, target.containers);
 }

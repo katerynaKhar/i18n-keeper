@@ -406,6 +406,10 @@ try {
     const { memory, file } = openMemory(config);
     const glossaryInfo = openGlossary(config);
     const limitsInfo = openLimits(config);
+    // Files that were read but carry nothing translatable are worth naming:
+    // silently ignoring part of a project is how a linter comes to be trusted
+    // for coverage it never had.
+    const passedOver = loadBundle(config, config.sourceLocale).skipped;
     const summary = {
       localesDir: config.localesDir,
       layout,
@@ -427,6 +431,13 @@ try {
           `locales      ${summary.locales.join(', ')}`,
           `placeholders ${summary.placeholderSyntaxes.join(', ')}`,
           `memory       ${memory ? relative(config.root, file) : 'none'}`,
+          ...(passedOver.length > 0
+            ? [
+                '',
+                'passed over:',
+                ...passedOver.map((s) => `  ${relative(config.root, s.file)} — ${s.reason}`),
+              ]
+            : []),
           `glossary     ${
             glossaryInfo.glossary
               ? `${relative(config.root, glossaryInfo.file)} (${glossaryInfo.glossary.terms.length} terms, ${glossaryInfo.glossary.doNotTranslate.length} verbatim)`

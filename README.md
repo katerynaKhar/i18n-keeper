@@ -37,7 +37,7 @@ errors
 | `placeholder_missing` | error | `{{name}}`, `%s`, `<0>` dropped in translation |
 | `placeholder_extra` | error | Placeholder that does not exist in the source |
 | `orphan_key` | warning | Key in a target locale, gone from the source |
-| `identical_to_source` | warning | Probably untranslated (allowlist with `--ignore-identical`) |
+| `identical_to_source` | off | Probably untranslated — but usually a proper noun, so opt in |
 | `stale` | warning | Source changed after the translation was recorded |
 | `untracked` | off | Translated but absent from the memory |
 | `icu_syntax_error` | error | Malformed ICU message — throws at format time |
@@ -278,9 +278,11 @@ Detected by default: `{{name}}` (mustache/i18next), `{name}` and
 Patterns are applied most-specific first and each match is masked out, so
 `{{name}}` is never also counted as `{name}`.
 
-Laravel's `:name` is off by default in JSON projects, where it false-positives
-on prose like `Warning:Important`; it turns on automatically when the project
-has PHP language files, and `--syntax` overrides the choice either way.
+Laravel's `:name` is off in a plain JSON project, where it false-positives on
+prose like `Warning:Important`. It turns on for a PHP project — one with PHP
+language files, a `composer.json`, or a `lang/` directory — because Laravel
+keeps string-keyed translations in `lang/xx.json`, placeholders and all, so the
+file extension alone would miss them. `--syntax` overrides the choice.
 
 ## Formats and layouts
 
@@ -654,6 +656,7 @@ npm run test:translate # the translation gate and repairs, against a stub client
 npm run test:apply     # save/apply, and every way a saved proposal goes stale
 npm run test:writers   # writing into PHP, YAML and gettext without losing anything
 npm run test:review    # the review queue and its only exit
+npm run test:detection # what a real third-party project taught the scanner
 npm run demo:plurals   # five locales with one, two, four and six plural forms
 npm run demo:glossary  # inflection, Cyrillic stems, CJK and brand names
 npm run demo:lengths   # German expansion and double-width Japanese

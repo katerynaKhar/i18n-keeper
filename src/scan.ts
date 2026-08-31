@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
-import { join, relative, resolve, sep } from 'node:path';
+import { basename, join, relative, resolve, sep } from 'node:path';
 import { readJsonLocale } from './formats/json.js';
 import { readPhpLocale } from './formats/php.js';
 import { readPoLocale } from './formats/po.js';
@@ -106,6 +106,7 @@ function collectLocaleFiles(dir: string, acc: string[] = []): string[] {
 
 export function loadBundle(config: Config, locale: string): LocaleBundle {
   const target: ReadTarget = {
+    skipped: [],
     leaves: new Map<string, Leaf>(),
     containers: new Set<string>(),
     plurals: new Map<string, number>(),
@@ -144,6 +145,7 @@ export function loadBundle(config: Config, locale: string): LocaleBundle {
   return {
     locale,
     files,
+    skipped: target.skipped,
     leaves: target.leaves,
     containers: target.containers,
     plurals: target.plurals,
@@ -178,9 +180,11 @@ export function detectProject(root: string, opts: DetectOptions = {}): Config {
   }
 
   // Laravel's :name is off by default because it false-positives on prose,
-  // but in a PHP project it is the interpolation syntax actually in use.
+  // but in a PHP project it is the interpolation syntax actually in use — and
+  // Laravel keeps string-keyed translations in JSON, so the file extension
+  // alone is not the signal. A composer.json or a lang/ directory is.
   const syntaxes = [...DEFAULT_SYNTAXES];
-  if (hasPhpLocales(localesDir, layout, locales)) syntaxes.push('laravel');
+  if (usesLaravelPlaceholders(resolvedRoot, localesDir, layout, locales)) syntaxes.push('laravel');
 
   return {
     root: resolvedRoot,
@@ -202,4 +206,23 @@ function hasPhpLocales(localesDir: string, layout: 'flat' | 'nested', locales: s
     const dir = join(localesDir, locale);
     return isDir(dir) && collectLocaleFiles(dir).some((file) => file.endsWith('.php'));
   });
+}
+
+/**
+ * Whether this project interpolates the PHP way.
+ *
+ * Tying it to the .php extension missed every Laravel app that keeps its
+ * string-keyed translations in lang/xx.json — which is Laravel's own
+ * convention, so the placeholders went unchecked in exactly the projects the
+ * syntax exists for.
+ */
+function usesLaravelPlaceholders(
+  root: string,
+  localesDir: string,
+  layout: 'flat' | 'nested',
+  locales: string[],
+): boolean {
+  if (hasPhpLocales(localesDir, layout, locales)) return true;
+  if (existsSync(join(root, 'composer.json'))) return true;
+  return basename(localesDir) === 'lang';
 }

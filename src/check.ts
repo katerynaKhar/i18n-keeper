@@ -21,7 +21,7 @@ import {
   splitPluralSuffix,
   type Category,
 } from './plurals.js';
-import { loadBundle } from './scan.js';
+import { loadBundle, sourceIsMsgid } from './scan.js';
 import type { Config, Finding, LocaleBundle, LocaleStat, Report, RuleId } from './types.js';
 
 const HAS_LETTER = /\p{L}/u;
@@ -455,6 +455,7 @@ export function check(
     localesDir: config.localesDir,
     sourceLocale: config.sourceLocale,
     sourceKeys: source.leaves.size,
+    sourceFromMsgid: sourceIsMsgid(source),
     memoryLoaded: memory !== null,
     stats,
     findings,

@@ -43,7 +43,7 @@ import {
   type JobKind,
 } from './translate.js';
 import { ALL_SYNTAXES } from './placeholders.js';
-import { ScanError, detectProject, listLocales, loadBundle } from './scan.js';
+import { ScanError, detectProject, listLocales, loadBundle, sourceIsMsgid } from './scan.js';
 import { RULE_IDS, type Config, type RuleId } from './types.js';
 import { VERSION } from './version.js';
 
@@ -409,7 +409,8 @@ try {
     // Files that were read but carry nothing translatable are worth naming:
     // silently ignoring part of a project is how a linter comes to be trusted
     // for coverage it never had.
-    const passedOver = loadBundle(config, config.sourceLocale).skipped;
+    const sourceBundle = loadBundle(config, config.sourceLocale);
+    const passedOver = sourceBundle.skipped;
     const summary = {
       localesDir: config.localesDir,
       layout,
@@ -427,7 +428,11 @@ try {
         [
           `locales dir  ${summary.localesDir}`,
           `layout       ${summary.layout}`,
-          `source       ${summary.sourceLocale}`,
+          `source       ${summary.sourceLocale}${
+            sourceIsMsgid(sourceBundle)
+              ? ' — gettext, so the source text comes from each msgid, not from this locale'
+              : ''
+          }`,
           `locales      ${summary.locales.join(', ')}`,
           `placeholders ${summary.placeholderSyntaxes.join(', ')}`,
           `memory       ${memory ? relative(config.root, file) : 'none'}`,

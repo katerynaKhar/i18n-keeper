@@ -129,6 +129,8 @@ export interface Report {
   localesDir: string;
   sourceLocale: string;
   sourceKeys: number;
+  /** gettext carries its source text in every catalogue, not in one locale. */
+  sourceFromMsgid: boolean;
   /** Whether a translation memory was available; without one, stale is unknowable. */
   memoryLoaded: boolean;
   stats: LocaleStat[];

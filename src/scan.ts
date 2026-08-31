@@ -105,6 +105,15 @@ function collectLocaleFiles(dir: string, acc: string[] = []): string[] {
   return acc;
 }
 
+/**
+ * Whether a bundle's source text comes from msgid rather than from the locale
+ * itself. In gettext every catalogue carries the untranslated string, so the
+ * locale named as the source only supplies the keys.
+ */
+export function sourceIsMsgid(bundle: LocaleBundle): boolean {
+  return bundle.files.length > 0 && bundle.files.every((f) => f.endsWith('.po') || f.endsWith('.pot'));
+}
+
 export function loadBundle(config: Config, locale: string): LocaleBundle {
   const target: ReadTarget = {
     skipped: [],

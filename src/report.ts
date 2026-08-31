@@ -135,7 +135,7 @@ export function renderReport(report: Report, root: string, limit: number): strin
 
   const head = [
     `${bold('i18n check')}`,
-    `source: ${bold(report.sourceLocale)}`,
+    `source: ${bold(report.sourceLocale)}${report.sourceFromMsgid ? dim(' (msgid)') : ''}`,
     `${report.sourceKeys} keys`,
     dim(relative(root, report.localesDir) || report.localesDir),
   ];

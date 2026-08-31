@@ -1,0 +1,5 @@
+# Line endings are normalised to LF everywhere, including Windows checkouts.
+# Locale files are compared and rewritten byte for byte, so a checkout that
+# differs by platform would make the fixtures — and the tests that read them —
+# behave differently on CI than on a developer's machine.
+* text=auto eol=lf

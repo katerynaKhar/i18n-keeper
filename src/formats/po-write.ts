@@ -49,7 +49,7 @@ const EMPTY_STRING = /^\s*""\s*$/;
  * key lands one entry early — which is exactly the bug this shape prevents.
  */
 function scan(content: string, file: string): { lines: string[]; blocks: Map<string, Block> } {
-  const lines = content.split('\n');
+  const lines = content.split(/\r?\n/);
   const keysInOrder = parsePo(content, file).entries.map(poKey);
   const blocks = new Map<string, Block>();
 
@@ -223,5 +223,8 @@ export function writePoLocale(
     out.push(...appended, '');
   }
 
-  return { content: out.join('\n'), skipped };
+  // A catalogue checked out on Windows may use CRLF; writing back with bare
+  // newlines would leave the file mixed.
+  const newline = content.includes('\r\n') ? '\r\n' : '\n';
+  return { content: out.join(newline), skipped };
 }

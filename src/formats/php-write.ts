@@ -110,7 +110,16 @@ export function writePhpLocale(
 
   for (const [at, { slot, lines }] of insertions) {
     const body = lines.join('\n');
-    const text = slot.empty ? `\n${body}\n` : slot.hasTrailingComma ? `\n${body}` : `,\n${body}`;
+    // An empty array usually already has a newline before its closing bracket;
+    // adding a second one would leave a blank line in the file.
+    const closingOnNextLine = content.slice(at).startsWith('\n');
+    const text = slot.empty
+      ? closingOnNextLine
+        ? `\n${body}`
+        : `\n${body}\n`
+      : slot.hasTrailingComma
+        ? `\n${body}`
+        : `,\n${body}`;
     splices.push({ start: at, end: at, text });
   }
 

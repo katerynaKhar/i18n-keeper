@@ -12,10 +12,14 @@ import type { Edit, LocaleWriter } from './formats/write.js';
 import { validate, type Proposal } from './translate.js';
 
 /**
- * Writing back is deliberately narrower than reading. JSON round-trips without
- * losing anything; PHP, YAML and .po carry comments, anchors and translator
- * notes that a naive re-serialise would silently discard, so those are reported
- * rather than rewritten until each has a real printer.
+ * Applying accepted translations to locale files.
+ *
+ * Each format has its own writer, and none of them re-serialises a parsed tree:
+ * comments, quote styles, anchors and translator notes have to survive, so the
+ * writers edit text in place. What this module decides is which file a key
+ * belongs to, and whether a file that does not exist yet can be created — which
+ * only JSON and PHP can, since a YAML file's shape and a gettext header cannot
+ * be invented.
  */
 
 export class ApplyError extends Error {}

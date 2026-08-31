@@ -186,9 +186,11 @@ function checkLocale(
 
     if (targetLeaf.value.trim() === '' && sourceLeaf.value.trim() !== '') {
       push(findings, config, 'empty_value', target.locale, key, targetLeaf.file, 'empty string');
-    } else {
-      translated++;
+      // Nothing further can be true of an empty string: it has no placeholders
+      // to have lost, no plural forms to be missing, no width to overflow.
+      continue;
     }
+    translated++;
 
     if (
       targetLeaf.value === sourceLeaf.value &&

@@ -1,6 +1,6 @@
 {
   "name": "@katerynakhar/i18n-keeper",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Deterministic i18n linter for JSON, Laravel PHP, gettext and YAML locale files, as a CLI and an MCP server.",
   "type": "module",
   "bin": {

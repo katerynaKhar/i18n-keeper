@@ -188,14 +188,6 @@ export function detectProject(root: string, opts: DetectOptions = {}): Config {
   if (sourceLocale && !locales.includes(sourceLocale)) {
     throw new ScanError(`Source locale "${sourceLocale}" not among: ${locales.join(', ')}`);
   }
-  if (!sourceLocale) {
-    // Prefer English, otherwise the most complete locale.
-    sourceLocale =
-      locales.find((l) => l === 'en') ??
-      locales.find((l) => l.startsWith('en')) ??
-      locales[0]!;
-  }
-
   // Laravel's :name is off by default because it false-positives on prose,
   // but in a PHP project it is the interpolation syntax actually in use — and
   // Laravel keeps string-keyed translations in JSON, so the file extension
@@ -203,16 +195,47 @@ export function detectProject(root: string, opts: DetectOptions = {}): Config {
   const syntaxes = [...DEFAULT_SYNTAXES];
   if (usesLaravelPlaceholders(resolvedRoot, localesDir, layout, locales)) syntaxes.push('laravel');
 
-  return {
+  const config: Config = {
     root: resolvedRoot,
     localesDir,
-    sourceLocale,
+    sourceLocale: sourceLocale || locales[0]!,
     locales,
     layout,
     placeholderSyntaxes: syntaxes,
     ignoreIdentical: [],
     rules: { ...DEFAULT_RULES },
   };
+
+  if (!sourceLocale) {
+    // Prefer English. Otherwise take the most complete catalogue rather than
+    // whichever sorts first: a project can carry en_DE and en_GB purely for
+    // date formats, and picking one of those to compare every language
+    // against is nonsense.
+    config.sourceLocale = locales.find((l) => l === 'en') ?? mostComplete(config, locales);
+  }
+
+  return config;
+}
+
+/** The locale with the most keys, which in practice is the one others follow. */
+function mostComplete(config: Config, locales: string[]): string {
+  let best = locales[0]!;
+  let bestCount = -1;
+
+  for (const locale of locales) {
+    let count = 0;
+    try {
+      count = loadBundle({ ...config, sourceLocale: locale }, locale).leaves.size;
+    } catch {
+      continue; // an unreadable locale simply cannot be the source
+    }
+    if (count > bestCount) {
+      best = locale;
+      bestCount = count;
+    }
+  }
+
+  return best;
 }
 
 function hasPhpLocales(localesDir: string, layout: 'flat' | 'nested', locales: string[]): boolean {

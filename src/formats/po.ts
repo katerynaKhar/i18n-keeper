@@ -212,9 +212,14 @@ export function readPoLocale(
     const base = namespace ? `${namespace}.${poKey(entry)}` : poKey(entry);
 
     if (entry.msgidPlural === null) {
-      // In a template the translation is empty and the msgid carries the text.
-      const value = isSource ? (entry.msgstr[0] || entry.msgid) : (entry.msgstr[0] ?? '');
-      target.leaves.set(base, { value, kind: 'string', file, fuzzy: entry.fuzzy });
+      // The msgid is the source text by definition, whatever this catalogue
+      // has translated it to.
+      const value = isSource ? entry.msgid : (entry.msgstr[0] ?? '');
+      // An untranslated entry carries an empty msgstr; that is the format's
+      // way of saying the key is not there yet, so no leaf is recorded.
+      if (value !== '') {
+        target.leaves.set(base, { value, kind: 'string', file, fuzzy: entry.fuzzy });
+      }
       continue;
     }
 
@@ -225,7 +230,8 @@ export function readPoLocale(
 
     for (let i = 0; i < count; i++) {
       const translated = entry.msgstr[i] ?? '';
-      const value = isSource ? (translated || sourceForms[Math.min(i, 1)]!) : translated;
+      const value = isSource ? sourceForms[Math.min(i, 1)]! : translated;
+      if (value === '') continue;
       target.leaves.set(`${base}.${i}`, { value, kind: 'string', file, fuzzy: entry.fuzzy });
     }
   }

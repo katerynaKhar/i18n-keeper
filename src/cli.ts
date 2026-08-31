@@ -25,6 +25,8 @@ import {
   emptyMemory,
   hashValue,
   loadMemory,
+  markReviewed,
+  unreviewed,
   memoryPath,
   saveMemory,
   syncMemory,
@@ -53,6 +55,7 @@ const HELP = `i18n-keeper ${VERSION}
   i18n-keeper sync  [path]    record current translations in the memory
   i18n-keeper translate [path]  fill the missing and stale set with Claude
   i18n-keeper apply <file> [path]  write proposals saved by translate
+  i18n-keeper review [path]   sign off on machine translations
 
 Options
   --locales <dir>       locales directory (default: auto-detect)
@@ -95,6 +98,16 @@ translate
 apply
   --dry-run             re-check the saved proposals and report, writing nothing
 
+review
+  --locale <l>          only this locale (repeatable)
+  --key <k>             only this key (repeatable)
+  --all                 every unreviewed translation
+  --dry-run             list what would be signed off, changing nothing
+
+  With no selection it lists what is waiting, and changes nothing. Nothing
+  else in the tool can mark a translation reviewed; that is the point of
+  recording machine output as unreviewed in the first place.
+
   Every proposal is checked again before it is written: a saved file may be
   days old, and it is editable by hand.
 
@@ -132,6 +145,8 @@ const { values, positionals } = (() => {
         only: { type: 'string', multiple: true },
         save: { type: 'string' },
         'dry-run': { type: 'boolean' },
+        key: { type: 'string', multiple: true },
+        all: { type: 'boolean' },
         limit: { type: 'string' },
         json: { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
@@ -158,7 +173,8 @@ if (
   command !== 'scan' &&
   command !== 'sync' &&
   command !== 'translate' &&
-  command !== 'apply'
+  command !== 'apply' &&
+  command !== 'review'
 ) {
   fail(`Unknown command: ${command}\n\n${HELP}`);
 }
@@ -426,6 +442,54 @@ try {
         ].join('\n'),
       );
     }
+    process.exit(0);
+  }
+
+  if (command === 'review') {
+    const memoryFile = memoryPath(config.root, values.memory);
+    const memory = loadMemory(memoryFile);
+    if (!memory) {
+      process.stdout.write(`No memory at ${relative(config.root, memoryFile)}; nothing to review.\n`);
+      process.exit(0);
+    }
+
+    const source = loadBundle(config, config.sourceLocale);
+    const selected = values.all === true;
+    const narrowed = (values.locale?.length ?? 0) > 0 || (values.key?.length ?? 0) > 0;
+    const waiting = unreviewed(memory, values.locale, values.key);
+
+    if (waiting.length === 0) {
+      process.stdout.write('Nothing waiting: every recorded translation has been reviewed.\n');
+      process.exit(0);
+    }
+
+    for (const item of waiting) {
+      const current = source.leaves.get(item.key)?.value;
+      process.stdout.write(`  ${item.locale}  ${item.key}  (${item.entry.origin})\n`);
+      if (current !== undefined) {
+        process.stdout.write(`    ${config.sourceLocale}  ${current}\n`);
+      }
+      process.stdout.write(`    ${item.locale}  ${item.entry.value}\n`);
+    }
+
+    if (!selected && !narrowed) {
+      process.stdout.write(
+        `\n${waiting.length} waiting. Sign off with --all, or narrow with --locale / --key.\n`,
+      );
+      process.exit(0);
+    }
+
+    if (values['dry-run']) {
+      process.stdout.write(`\n${waiting.length} would be marked reviewed. Nothing written.\n`);
+      process.exit(0);
+    }
+
+    const marked = markReviewed(waiting, new Date().toISOString());
+    saveMemory(memoryFile, memory);
+    process.stdout.write(
+      `\nMarked ${marked} translation${marked === 1 ? '' : 's'} reviewed in ` +
+        `${relative(config.root, memoryFile)}.\n`,
+    );
     process.exit(0);
   }
 

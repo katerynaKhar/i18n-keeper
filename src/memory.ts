@@ -13,6 +13,48 @@ export interface MemoryEntry {
   origin: 'human' | 'machine';
   reviewed: boolean;
   updatedAt: string;
+  /** When a person signed off on it, for entries that have been reviewed. */
+  reviewedAt?: string;
+}
+
+export interface Unreviewed {
+  locale: string;
+  key: string;
+  entry: MemoryEntry;
+}
+
+/** Everything still waiting for a person to look at it, in a stable order. */
+export function unreviewed(memory: Memory, locales?: string[], keys?: string[]): Unreviewed[] {
+  const wantedLocale = locales && locales.length > 0 ? new Set(locales) : null;
+  const wantedKey = keys && keys.length > 0 ? new Set(keys) : null;
+  const out: Unreviewed[] = [];
+
+  for (const locale of Object.keys(memory.entries).sort()) {
+    if (wantedLocale && !wantedLocale.has(locale)) continue;
+    const byKey = memory.entries[locale] ?? {};
+    for (const key of Object.keys(byKey).sort()) {
+      if (wantedKey && !wantedKey.has(key)) continue;
+      const entry = byKey[key]!;
+      if (!entry.reviewed) out.push({ locale, key, entry });
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Signs off on translations a person has actually looked at.
+ *
+ * Nothing else in the tool can set this: a machine translation is recorded
+ * unreviewed and stays that way until someone says otherwise, which is the
+ * whole point of recording it.
+ */
+export function markReviewed(entries: Unreviewed[], now: string): number {
+  for (const { entry } of entries) {
+    entry.reviewed = true;
+    entry.reviewedAt = now;
+  }
+  return entries.length;
 }
 
 export interface Memory {
@@ -158,6 +200,11 @@ export function syncMemory(config: Config, memory: Memory, opts: SyncOptions): S
           origin: translationChanged ? opts.origin : entry.origin,
           reviewed: translationChanged ? opts.reviewed : entry.reviewed,
           updatedAt: now,
+          // A sign-off survives a source edit; only a rewritten translation
+          // invalidates it.
+          ...(translationChanged || entry.reviewedAt === undefined
+            ? {}
+            : { reviewedAt: entry.reviewedAt }),
         };
         result.updated++;
         continue;

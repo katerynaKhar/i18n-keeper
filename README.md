@@ -361,6 +361,7 @@ i18n-keeper scan  [path]    show what would be checked
 i18n-keeper sync  [path]    record current translations in the memory
 i18n-keeper translate [path]  fill the missing and stale set with Claude
 i18n-keeper apply <file> [path]  write proposals saved by translate
+i18n-keeper review [path]   sign off on machine translations
 
 --locales <dir>             locales directory (default: auto-detect)
 --source <locale>           source locale (default: en, else the first found)
@@ -394,6 +395,11 @@ translate
 
 apply
 --dry-run                   re-check the saved proposals and report, writing nothing
+
+review
+--key <k>                   only this key (repeatable)
+--all                       every unreviewed translation
+--dry-run                   list what would be signed off, changing nothing
 ```
 
 Exit codes: `0` clean, `1` at least one error, `2` the tool itself failed.
@@ -585,6 +591,34 @@ credentials, a rate limit, a dropped connection — will hit every remaining
 batch identically, so the run stops and says how many strings were never
 attempted. Those are not reported as rejections: the checks never saw them.
 
+### Signing off
+
+Recording machine output as unreviewed is only useful if there is a way out of
+that state, and nothing else in the tool provides one — not `sync`, not
+`--force`. Only a person can say a translation is good:
+
+```bash
+i18n-keeper review                          # what is waiting, changing nothing
+i18n-keeper review --locale pl              # sign off on one language
+i18n-keeper review --key cart.empty         # or one string
+i18n-keeper review --all                    # everything outstanding
+```
+
+With no selection it lists the queue with the source beside each translation,
+so the review can happen in the terminal rather than by hunting through files:
+
+```
+  pl  cart.empty  (machine)
+    en  Your cart is empty
+    pl  Twój koszyk jest pusty
+
+3 waiting. Sign off with --all, or narrow with --locale / --key.
+```
+
+A sign-off records `reviewedAt` and survives later edits to the *source*; only
+rewriting the translation itself clears it. `--dry-run` shows what would be
+marked without touching the file.
+
 ### Cost and credentials
 
 Needs `ANTHROPIC_API_KEY`, or a profile from `ant auth login`. Defaults to
@@ -617,6 +651,7 @@ npm run test:formats   # gettext parsing, YAML typing traps, parse errors
 npm run test:translate # the translation gate and repairs, against a stub client
 npm run test:apply     # save/apply, and every way a saved proposal goes stale
 npm run test:writers   # writing into PHP, YAML and gettext without losing anything
+npm run test:review    # the review queue and its only exit
 npm run demo:plurals   # five locales with one, two, four and six plural forms
 npm run demo:glossary  # inflection, Cyrillic stems, CJK and brand names
 npm run demo:lengths   # German expansion and double-width Japanese

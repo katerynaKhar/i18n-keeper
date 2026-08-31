@@ -4,6 +4,11 @@ import type { Glossary } from './glossary.js';
 import { limitFor, type Limits } from './lengths.js';
 import { hashValue, type Memory } from './memory.js';
 import type { Config, LocaleBundle } from './types.js';
+import { writeJsonLocale } from './formats/json-write.js';
+import { writePhpLocale } from './formats/php-write.js';
+import { writePoLocale } from './formats/po-write.js';
+import { writeYamlLocale } from './formats/yaml-write.js';
+import type { Edit, LocaleWriter } from './formats/write.js';
 import { validate, type Proposal } from './translate.js';
 
 /**
@@ -17,72 +22,105 @@ export class ApplyError extends Error {}
 
 export interface Destination {
   file: string;
-  /** Path inside the file, with any file-level namespace already removed. */
-  path: string[];
+  /** The key as that file spells it, with any file-level namespace removed. */
+  key: string;
+}
+
+const WRITERS = new Map<string, LocaleWriter>([
+  ['.json', writeJsonLocale],
+  ['.php', writePhpLocale],
+  ['.yaml', writeYamlLocale],
+  ['.yml', writeYamlLocale],
+  ['.pot', writePoLocale],
+  ['.po', writePoLocale],
+]);
+
+/**
+ * Formats whose empty form is unambiguous, so a locale file that does not exist
+ * yet can be created. A YAML file's shape depends on whether the project nests
+ * under a locale root, and a gettext catalogue needs a header declaring its own
+ * plural rules — neither can be invented, so those must already exist.
+ */
+const CREATABLE = new Map<string, string>([
+  ['.json', '{}\n'],
+  ['.php', '<?php\n\nreturn [\n];\n'],
+]);
+
+function extensionOf(file: string): string {
+  const at = file.lastIndexOf('.');
+  return at === -1 ? '' : file.slice(at).toLowerCase();
 }
 
 function namespaceOf(config: Config, sourceFile: string): string {
   const localeRoot = join(config.localesDir, config.sourceLocale);
-  const relativePath = relative(localeRoot, sourceFile).replace(/\.[^.]+$/, '');
-  return relativePath
+  return relative(localeRoot, sourceFile)
+    .replace(/\.[^.]+$/, '')
     .split(sep)
     .filter((part) => part !== 'LC_MESSAGES')
     .join('.');
 }
 
-/** Where a translation for `key` belongs, or null when the format cannot be written. */
+/**
+ * Which source file a key belongs to.
+ *
+ * Not every key the target needs exists in the source: a plural form only the
+ * target language has — Polish `items.few` against English `one`/`other` — has
+ * no source leaf at all. Such a key still belongs wherever its neighbours live,
+ * so the lookup walks up to the nearest prefix that does exist.
+ */
+function sourceFileFor(source: LocaleBundle, key: string): string | null {
+  const leaf = source.leaves.get(key);
+  if (leaf) return leaf.file;
+
+  const parts = key.split('.');
+  for (let depth = parts.length - 1; depth > 0; depth--) {
+    const prefix = `${parts.slice(0, depth).join('.')}.`;
+    for (const [candidate, candidateLeaf] of source.leaves) {
+      if (candidate.startsWith(prefix)) return candidateLeaf.file;
+    }
+  }
+
+  // i18next spells plurals as item_few rather than item.few.
+  const underscore = key.lastIndexOf('_');
+  if (underscore > 0) {
+    const base = `${key.slice(0, underscore)}_`;
+    for (const [candidate, candidateLeaf] of source.leaves) {
+      if (candidate.startsWith(base)) return candidateLeaf.file;
+    }
+  }
+
+  return source.files[0] ?? null;
+}
+
+/** Where a translation for `key` belongs, or null when the format is unknown. */
 export function destinationFor(
   config: Config,
   source: LocaleBundle,
   locale: string,
   key: string,
 ): Destination | null {
-  if (config.layout === 'flat') {
-    const file = join(config.localesDir, `${locale}.json`);
-    if (!existsSync(file) && !existsSync(join(config.localesDir, `${config.sourceLocale}.json`))) {
-      return null;
-    }
-    return { file, path: key.split('.') };
-  }
+  const from = sourceFileFor(source, key);
+  if (!from) return null;
 
-  const sourceLeaf = source.leaves.get(key);
-  if (!sourceLeaf || !sourceLeaf.file.endsWith('.json')) return null;
+  const extension = extensionOf(from);
+  if (!WRITERS.has(extension)) return null;
+
+  if (config.layout === 'flat') {
+    return { file: join(config.localesDir, `${locale}${extension}`), key };
+  }
 
   const localeRoot = join(config.localesDir, config.sourceLocale);
-  const withinLocale = relative(localeRoot, sourceLeaf.file);
-  const namespace = namespaceOf(config, sourceLeaf.file);
+  const withinLocale = relative(localeRoot, from);
+  const namespace = namespaceOf(config, from);
   const inner = namespace && key.startsWith(`${namespace}.`) ? key.slice(namespace.length + 1) : key;
 
-  return { file: join(config.localesDir, locale, withinLocale), path: inner.split('.') };
-}
-
-function setPath(root: Record<string, unknown>, path: string[], value: string, file: string): void {
-  let node: Record<string, unknown> = root;
-  for (const [index, segment] of path.entries()) {
-    if (index === path.length - 1) {
-      node[segment] = value;
-      return;
-    }
-    const next = node[segment];
-    if (next === undefined) {
-      const created: Record<string, unknown> = {};
-      node[segment] = created;
-      node = created;
-      continue;
-    }
-    if (typeof next !== 'object' || next === null || Array.isArray(next)) {
-      throw new ApplyError(
-        `Cannot write ${path.join('.')} in ${file}: ${segment} already holds a value`,
-      );
-    }
-    node = next as Record<string, unknown>;
-  }
+  return { file: join(config.localesDir, locale, withinLocale), key: inner };
 }
 
 export interface ApplyResult {
   written: number;
   files: string[];
-  /** Keys whose format has no writer yet. */
+  /** Translations that could not be written, and why. */
   skipped: Array<{ locale: string; key: string; reason: string }>;
 }
 
@@ -92,7 +130,7 @@ export function applyProposals(
   proposals: Proposal[],
 ): ApplyResult {
   const result: ApplyResult = { written: 0, files: [], skipped: [] };
-  const byFile = new Map<string, Array<{ path: string[]; value: string }>>();
+  const byFile = new Map<string, { locale: string; edits: Edit[] }>();
 
   for (const proposal of proposals) {
     if (!proposal.accepted) continue;
@@ -102,39 +140,56 @@ export function applyProposals(
       result.skipped.push({
         locale: proposal.locale,
         key: proposal.key,
-        reason: 'no writer for this format yet',
+        reason: 'no writer for this format',
       });
       continue;
     }
 
-    const list = byFile.get(destination.file);
-    if (list) list.push({ path: destination.path, value: proposal.value });
-    else byFile.set(destination.file, [{ path: destination.path, value: proposal.value }]);
+    const bucket = byFile.get(destination.file);
+    const edit: Edit = { key: destination.key, value: proposal.value };
+    if (bucket) bucket.edits.push(edit);
+    else byFile.set(destination.file, { locale: proposal.locale, edits: [edit] });
   }
 
-  for (const [file, edits] of byFile) {
-    let root: Record<string, unknown> = {};
+  for (const [file, { locale, edits }] of byFile) {
+    const extension = extensionOf(file);
+    const writer = WRITERS.get(extension)!;
+
+    let content: string;
     if (existsSync(file)) {
-      try {
-        const parsed = JSON.parse(readFileSync(file, 'utf8'));
-        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-          throw new ApplyError(`Cannot write ${file}: it does not hold an object`);
+      content = readFileSync(file, 'utf8');
+    } else {
+      const blank = CREATABLE.get(extension);
+      if (blank === undefined) {
+        for (const edit of edits) {
+          result.skipped.push({
+            locale,
+            key: edit.key,
+            reason: `${file} does not exist and this format cannot be created from nothing`,
+          });
         }
-        root = parsed as Record<string, unknown>;
-      } catch (err) {
-        if (err instanceof ApplyError) throw err;
-        throw new ApplyError(
-          `Cannot write ${file}: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        continue;
       }
+      content = blank;
     }
 
-    for (const edit of edits) setPath(root, edit.path, edit.value, file);
+    let outcome;
+    try {
+      outcome = writer(content, file, locale, edits);
+    } catch (err) {
+      throw new ApplyError(
+        `Cannot write ${file}\n  ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    for (const skip of outcome.skipped) {
+      result.skipped.push({ locale, key: skip.key, reason: skip.reason });
+    }
 
     mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, `${JSON.stringify(root, null, 2)}\n`);
+    writeFileSync(file, outcome.content);
     result.files.push(file);
-    result.written += edits.length;
+    result.written += edits.length - outcome.skipped.length;
   }
 
   return result;

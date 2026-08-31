@@ -20,13 +20,44 @@ export class PhpParseError extends FormatError {
 
 const IDENT_START = /[A-Za-z_\x80-￿]/;
 
+/** Where a value sits in the source text, so it can be replaced in place. */
+export interface ValueSpan {
+  start: number;
+  end: number;
+}
+
+/** Where a new entry can be inserted into an existing array. */
+export interface ArraySlot {
+  /** Just past the last entry's value, or just past the opening bracket. */
+  insertAt: number;
+  /** Indentation the entries use, so an inserted one lines up. */
+  indent: string;
+  hasTrailingComma: boolean;
+  empty: boolean;
+}
+
+export interface PhpLayout {
+  /** Dot path -> the span of its value expression. */
+  values: Map<string, ValueSpan>;
+  /** Dot path of every array ('' for the returned one) -> where to insert. */
+  arrays: Map<string, ArraySlot>;
+}
+
 class Parser {
   private pos = 0;
+  readonly layout: PhpLayout = { values: new Map(), arrays: new Map() };
 
   constructor(
     private readonly text: string,
     private readonly file: string,
   ) {}
+
+  /** The indentation of the line `at` sits on. */
+  private indentAt(at: number): string {
+    const lineStart = this.text.lastIndexOf('\n', at - 1) + 1;
+    const match = /^[ \t]*/.exec(this.text.slice(lineStart, at));
+    return match ? match[0] : '';
+  }
 
   private lineAt(pos: number): number {
     let line = 1;
@@ -104,7 +135,7 @@ class Parser {
       this.error('Expected `return` — a language file must return an array');
     }
 
-    const value = this.parseValue();
+    const value = this.parseValue('');
     this.expect(';');
 
     this.skipTrivia();
@@ -114,7 +145,7 @@ class Parser {
     return value;
   }
 
-  private parseValue(): PlainValue {
+  private parseValue(path: string): PlainValue {
     this.skipTrivia();
     if (this.atEnd()) this.error('Unexpected end of file');
 
@@ -122,11 +153,11 @@ class Parser {
 
     if (ch === '[') {
       this.pos++;
-      return this.parseArrayBody(']');
+      return this.parseArrayBody(']', path);
     }
     if (this.eatKeyword('array')) {
       this.expect('(', '( after array');
-      return this.parseArrayBody(')');
+      return this.parseArrayBody(')', path);
     }
     if (ch === "'") return this.parseSingleQuoted();
     if (ch === '"') return this.parseDoubleQuoted();
@@ -144,10 +175,15 @@ class Parser {
     this.error(`Unexpected character ${JSON.stringify(ch)}`);
   }
 
-  private parseArrayBody(closing: string): PlainValue {
+  private parseArrayBody(closing: string, path: string): PlainValue {
     const entries: Array<[string | number, PlainValue]> = [];
     let nextIndex = 0;
     let sawStringKey = false;
+
+    const afterOpen = this.pos;
+    let indent = '';
+    let lastValueEnd = afterOpen;
+    let hasTrailingComma = false;
 
     for (;;) {
       this.skipTrivia();
@@ -155,27 +191,49 @@ class Parser {
       if (this.atEnd()) this.error(`Unterminated array, expected ${closing}`);
 
       const start = this.pos;
-      const first = this.parseValue();
+      if (indent === '') indent = this.indentAt(start);
+      const first = this.parseValue(path);
 
       if (this.eat('=>')) {
+        let key: string | number;
         if (typeof first === 'string') {
           sawStringKey = true;
-          entries.push([first, this.parseValue()]);
+          key = first;
         } else if (typeof first === 'number' && Number.isInteger(first)) {
           nextIndex = Math.max(nextIndex, first + 1);
-          entries.push([first, this.parseValue()]);
+          key = first;
         } else {
           this.error('Array keys must be strings or integers', start);
         }
+        entries.push([key, this.recordValue(path, String(key))]);
       } else {
-        entries.push([nextIndex++, first]);
+        const key = nextIndex++;
+        // A list entry's value was already consumed as `first`; its span runs
+        // from where the entry started to where parsing left off.
+        this.layout.values.set(join(path, String(key)), { start, end: this.pos });
+        entries.push([key, first]);
       }
 
+      lastValueEnd = this.pos;
       this.skipTrivia();
-      if (this.eat(',')) continue;
+      if (this.eat(',')) {
+        hasTrailingComma = true;
+        // Past the comma, so an inserted entry lands after it rather than
+        // between the value and its separator.
+        lastValueEnd = this.pos;
+        continue;
+      }
+      hasTrailingComma = false;
       this.expect(closing, `, or ${closing}`);
       break;
     }
+
+    this.layout.arrays.set(path, {
+      insertAt: entries.length === 0 ? afterOpen : lastValueEnd,
+      indent: indent || '    ',
+      hasTrailingComma,
+      empty: entries.length === 0,
+    });
 
     // PHP arrays are ordered maps; a purely sequential one is a JS array.
     const sequential =
@@ -185,6 +243,14 @@ class Parser {
     const object: Record<string, PlainValue> = {};
     for (const [key, value] of entries) object[String(key)] = value;
     return object;
+  }
+
+  private recordValue(path: string, key: string): PlainValue {
+    this.skipTrivia();
+    const start = this.pos;
+    const value = this.parseValue(join(path, key));
+    this.layout.values.set(join(path, key), { start, end: this.pos });
+    return value;
   }
 
   private parseNumber(): number {
@@ -312,8 +378,19 @@ class Parser {
   }
 }
 
+function join(path: string, key: string): string {
+  return path ? `${path}.${key}` : key;
+}
+
 export function parsePhp(text: string, file: string): PlainValue {
   return new Parser(text, file).parseFile();
+}
+
+/** Parses and also reports where every value and array sits in the text. */
+export function parsePhpLayout(text: string, file: string): { value: PlainValue; layout: PhpLayout } {
+  const parser = new Parser(text, file);
+  const value = parser.parseFile();
+  return { value, layout: parser.layout };
 }
 
 export function readPhpLocale(

@@ -22,16 +22,19 @@ function normaliseLocale(value: string): string {
  * Rails nests the whole file under its locale code. Left in place, every key in
  * en.yml would differ from every key in fr.yml.
  */
-export function stripLocaleRoot(parsed: unknown, locale: string): unknown {
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return parsed;
+export function localeRootKey(parsed: unknown, locale: string): string | null {
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
 
   const keys = Object.keys(parsed as Record<string, unknown>);
-  if (keys.length !== 1) return parsed;
+  if (keys.length !== 1) return null;
 
   const root = keys[0]!;
-  if (normaliseLocale(root) !== normaliseLocale(locale)) return parsed;
+  return normaliseLocale(root) === normaliseLocale(locale) ? root : null;
+}
 
-  return (parsed as Record<string, unknown>)[root];
+export function stripLocaleRoot(parsed: unknown, locale: string): unknown {
+  const root = localeRootKey(parsed, locale);
+  return root === null ? parsed : (parsed as Record<string, unknown>)[root];
 }
 
 export function readYamlLocale(

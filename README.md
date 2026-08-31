@@ -548,10 +548,35 @@ applied and recorded in the memory as `origin: "machine"`, `reviewed: false` —
 so a human can find every unreviewed machine string later, and `stale` keeps
 working from there.
 
-Writing back is narrower than reading: JSON round-trips losslessly, while PHP,
-YAML and `.po` carry comments, anchors and translator notes that a naive
-re-serialise would discard. Those are reported as not written rather than
-rewritten.
+### Writing back without losing the file
+
+Reading discards everything that is not a key or a value: comments, quote
+styles, blank lines, anchors, translator notes. Writing must not. So no writer
+re-serialises a parsed tree — each edits the text in place and leaves every byte
+it had no reason to touch.
+
+- **JSON** is the exception, and the easy one: no comments, no styles, nothing
+  to lose, so it is re-serialised.
+- **PHP** replaces the exact span of one value. A comment above the entry, a
+  `'C:\\Users\\shared'` escape, a `"caf\u{e9}"` written with a unicode escape —
+  all come out byte for byte as they went in. New keys are inserted into their
+  array with the indentation the neighbours use, and missing levels are created.
+- **YAML** goes through the document model, which keeps comments and anchors
+  across a round trip. An existing scalar is mutated rather than replaced, so a
+  block scalar stays a block scalar. **An alias is refused**: writing through
+  `*shared` would silently change every key that shares the anchor.
+- **gettext** is edited by line, leaving the header, obsolete `#~` entries and
+  multi-line msgids alone. A new entry is appended with its `msgctxt`.
+
+A gettext entry written this way is marked `#, fuzzy`. That flag is gettext's
+own word for "no person has reviewed this", which is exactly what the memory
+records as `reviewed: false`; leaving it off would claim an approval nobody
+gave. `check` then reports those entries as stale, which is correct.
+
+A locale file that does not exist yet is created for JSON and PHP, whose empty
+form is unambiguous. It is not invented for YAML, whose shape depends on whether
+the project nests under a locale root, nor for gettext, whose header declares
+the language's own plural rules. Those are reported as not written.
 
 Exit code is 1 whenever anything was rejected, so a pipeline notices.
 
@@ -567,10 +592,12 @@ Needs `ANTHROPIC_API_KEY`, or a profile from `ant auth login`. Defaults to
 strings per run — raise with `--cap`. The source strings, their keys and their
 constraints are what gets sent.
 
-## Not yet
+## Known limits
 
-Writers for PHP, YAML and `.po`, so `translate --write` can apply to those
-formats too rather than reporting them as skipped.
+- A gettext key joins `msgctxt` and `msgid` with `|`. A contextless msgid that
+  contains a pipe is indistinguishable from a contextual one, which only matters
+  when appending an entry the catalogue has never carried.
+- New locale files are created for JSON and PHP only; see above.
 
 ## Development
 
@@ -589,6 +616,7 @@ npm run test:lengths   # display width, limit resolution, limits-file errors
 npm run test:formats   # gettext parsing, YAML typing traps, parse errors
 npm run test:translate # the translation gate and repairs, against a stub client
 npm run test:apply     # save/apply, and every way a saved proposal goes stale
+npm run test:writers   # writing into PHP, YAML and gettext without losing anything
 npm run demo:plurals   # five locales with one, two, four and six plural forms
 npm run demo:glossary  # inflection, Cyrillic stems, CJK and brand names
 npm run demo:lengths   # German expansion and double-width Japanese

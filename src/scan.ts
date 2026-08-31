@@ -216,11 +216,14 @@ export function detectProject(root: string, opts: DetectOptions = {}): Config {
   };
 
   if (!sourceLocale) {
-    // Prefer English. Otherwise take the most complete catalogue rather than
-    // whichever sorts first: a project can carry en_DE and en_GB purely for
-    // date formats, and picking one of those to compare every language
-    // against is nonsense.
-    config.sourceLocale = locales.find((l) => l === 'en') ?? mostComplete(config, locales);
+    // Plain `en` first; then a single regional English, which is the source in
+    // a project that spells it en-US. Several of them means none is: Sphinx
+    // carries en_DE and en_GB purely for date formats, so there the most
+    // complete catalogue is the better guess than whichever sorts first.
+    const english = locales.filter((l) => /^en([-_]|$)/.test(l));
+    config.sourceLocale =
+      locales.find((l) => l === 'en') ??
+      (english.length === 1 ? english[0]! : mostComplete(config, locales));
   }
 
   return config;

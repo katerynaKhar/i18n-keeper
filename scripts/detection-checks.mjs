@@ -140,4 +140,32 @@ console.log('\n=== a language may expand one source string into plural forms ===
   check('and nothing else is invented', report.findings.length === 0);
 }
 
+;
+
+console.log('\n=== which locale is the source ===');
+{
+  const cases = [
+    [{ 'locales/en.json': '{"a":"x"}', 'locales/fr.json': '{"a":"y"}' }, 'en', 'plain en wins'],
+    [
+      { 'locales/en-US.json': '{"a":"x"}', 'locales/cs-CZ.json': '{"a":"y","b":"z"}' },
+      'en-US',
+      'a single regional English wins over a fuller locale',
+    ],
+    [
+      {
+        'locales/en_GB.json': '{"a":"x"}',
+        'locales/en_DE.json': '{"a":"x"}',
+        'locales/de.json': '{"a":"y","b":"z","c":"w"}',
+      },
+      'de',
+      'several regional Englishes mean none is the source',
+    ],
+  ];
+  for (const [files, expected, label] of cases) {
+    const root = project(`source-${expected}`, files);
+    const actual = detectProject(root).sourceLocale;
+    check(`${label} (${actual})`, actual === expected);
+  }
+}
+
 rmSync(ROOT, { recursive: true, force: true });

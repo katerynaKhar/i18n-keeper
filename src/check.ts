@@ -84,6 +84,29 @@ function checkIcuCategories(
   }
 }
 
+/**
+ * The plural categories a target uses where the source had a plain string, or
+ * null when the expansion is something else.
+ */
+function pluralExpansion(
+  target: LocaleBundle,
+  key: string,
+  categories: Set<string> | null,
+): Set<string> | null {
+  if (!categories) return null;
+  const prefix = `${key}.`;
+  const used = new Set<string>();
+
+  for (const candidate of target.leaves.keys()) {
+    if (!candidate.startsWith(prefix)) continue;
+    const rest = candidate.slice(prefix.length);
+    if (rest.includes('.') || !categories.has(rest)) return null;
+    used.add(rest);
+  }
+
+  return used.size > 0 ? used : null;
+}
+
 function checkLocale(
   config: Config,
   source: LocaleBundle,
@@ -94,6 +117,9 @@ function checkLocale(
   limits: Limits | null,
 ): LocaleStat {
   const before = findings.length;
+  for (const bad of target.unreadable) {
+    push(findings, config, 'unreadable_file', target.locale, bad.file, bad.file, bad.message);
+  }
   const ignore = new Set(config.ignoreIdentical.map((s) => s.toLowerCase()));
   const structuralPrefixes: string[] = [];
 
@@ -137,6 +163,18 @@ function checkLocale(
       const file = target.files[0] ?? target.locale;
       if (target.containers.has(key)) {
         structuralPrefixes.push(key + '.');
+        // Arabic turning one English string into zero/one/two/few/many is
+        // correct pluralisation, not a structural disagreement — so it is
+        // judged as a plural group instead.
+        const expanded = pluralExpansion(target, key, categories);
+        if (expanded) {
+          const absent = [...categories!].filter((c) => !expanded.has(c));
+          if (absent.length > 0) {
+            push(findings, config, 'plural_missing_category', target.locale, `${key}.*`, file,
+              `${target.locale} needs ${list(categories!)}, has ${list(expanded)}`);
+          }
+          continue;
+        }
         push(findings, config, 'structure_mismatch', target.locale, key, file,
           'value in source, object in target');
       } else {
@@ -365,6 +403,9 @@ function checkSource(
   findings: Finding[],
   limits: Limits | null,
 ): void {
+  for (const bad of source.unreadable) {
+    push(findings, config, 'unreadable_file', source.locale, bad.file, bad.file, bad.message);
+  }
   const categories = categoriesFor(source.locale);
   const laravel = config.placeholderSyntaxes.includes('laravel');
   for (const [key, leaf] of source.leaves) {

@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { basename, join, relative, resolve, sep } from 'node:path';
+import { FormatError } from './formats/error.js';
 import { readJsonLocale } from './formats/json.js';
 import { readPhpLocale } from './formats/php.js';
 import { readPoLocale } from './formats/po.js';
@@ -113,7 +114,22 @@ export function loadBundle(config: Config, locale: string): LocaleBundle {
     nplurals: null,
   };
   const files: string[] = [];
+  const unreadable: Array<{ file: string; message: string }> = [];
   const isSource = locale === config.sourceLocale;
+
+  /**
+   * A malformed file is reported, not thrown. A project with a hundred
+   * locales and one bad file should still be checked; refusing to read any
+   * of it is how a linter becomes something people stop running.
+   */
+  const read = (file: string, namespace: string): void => {
+    try {
+      readerFor(file)(file, namespace, locale, isSource, target);
+    } catch (err) {
+      if (!(err instanceof FormatError)) throw err;
+      unreadable.push({ file, message: err.message });
+    }
+  };
 
   if (config.layout === 'flat') {
     // A locale may be en.json or en.php; both are read when both exist.
@@ -121,7 +137,7 @@ export function loadBundle(config: Config, locale: string): LocaleBundle {
       const file = join(config.localesDir, `${locale}${ext}`);
       if (!existsSync(file)) continue;
       files.push(file);
-      readerFor(file)(file, '', locale, isSource, target);
+      read(file, '');
     }
     if (files.length === 0) {
       throw new ScanError(`No locale file for "${locale}" in ${config.localesDir}`);
@@ -138,7 +154,7 @@ export function loadBundle(config: Config, locale: string): LocaleBundle {
         .filter((part) => part !== 'LC_MESSAGES')
         .join('.');
       files.push(file);
-      readerFor(file)(file, namespace, locale, isSource, target);
+      read(file, namespace);
     }
   }
 
@@ -146,6 +162,7 @@ export function loadBundle(config: Config, locale: string): LocaleBundle {
     locale,
     files,
     skipped: target.skipped,
+    unreadable,
     leaves: target.leaves,
     containers: target.containers,
     plurals: target.plurals,

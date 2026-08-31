@@ -275,9 +275,10 @@ export function splitPluralSuffix(key: string): SuffixKey | null {
 /**
  * Groups keys like item_one / item_other into base -> categories.
  *
- * A lone sibling is not a plural group: a key literally named `numbers.one`
- * should not be asked to grow a `few` form. A real group either carries
- * `other`, which every language has, or offers more than one category.
+ * A group must carry `other`, which every CLDR plural set has. Without that
+ * test, Rails' `restrict_dependent_destroy.has_one` / `has_many` — ActiveRecord
+ * association names — read as a plural group and were asked to grow the forms
+ * their language requires.
  */
 export function pluralGroups(keys: Iterable<string>): Map<string, PluralGroup> {
   const groups = new Map<string, PluralGroup>();
@@ -293,7 +294,7 @@ export function pluralGroups(keys: Iterable<string>): Map<string, PluralGroup> {
   }
 
   for (const [base, group] of groups) {
-    if (!group.categories.has('other') && group.categories.size < 2) groups.delete(base);
+    if (!group.categories.has('other')) groups.delete(base);
   }
   return groups;
 }

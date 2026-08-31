@@ -87,4 +87,57 @@ console.log('\n=== a file whose root is a list is not a locale file ===');
   );
 }
 
+console.log('\n=== a pair of category-shaped keys is not a plural group ===');
+{
+  // Rails' restrict_dependent_destroy.has_one / has_many are ActiveRecord
+  // association names. Without requiring `other`, they read as a plural group
+  // and every language was asked to grow the forms it needs.
+  const { pluralGroups } = await import('../dist/plurals.js');
+  const assoc = pluralGroups(['restrict.has_one', 'restrict.has_many']);
+  check('has_one + has_many is not one', assoc.size === 0);
+
+  const real = pluralGroups(['item_one', 'item_other']);
+  check('one + other still is', real.size === 1);
+
+  const japanese = pluralGroups(['item_other']);
+  check('a lone `other` still is', japanese.size === 1);
+}
+
+console.log('\n=== a language may expand one source string into plural forms ===');
+{
+  const root = project('expansion', {
+    'locales/en.json': JSON.stringify({ other_than: 'must not be %{count}' }, null, 2),
+    'locales/ar.json': JSON.stringify(
+      {
+        other_than: {
+          zero: 'صفر %{count}',
+          one: 'واحد %{count}',
+          two: 'اثنان %{count}',
+          few: 'قليل %{count}',
+          many: 'كثير %{count}',
+          other: 'أخرى %{count}',
+        },
+      },
+      null,
+      2,
+    ),
+  });
+  let report;
+  try {
+    report = JSON.parse(
+      execFileSync(process.execPath, ['dist/cli.js', 'check', root, '--json'], {
+        encoding: 'utf8',
+        stdio: 'pipe',
+      }),
+    );
+  } catch (err) {
+    report = JSON.parse(err.stdout);
+  }
+  check(
+    'complete Arabic forms are not a structure mismatch',
+    report.findings.every((f) => f.rule !== 'structure_mismatch'),
+  );
+  check('and nothing else is invented', report.findings.length === 0);
+}
+
 rmSync(ROOT, { recursive: true, force: true });

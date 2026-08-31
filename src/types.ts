@@ -20,6 +20,7 @@ export const RULE_IDS = [
   'inconsistent_translation',
   'length_over_max',
   'length_overflow',
+  'unreadable_file',
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -52,6 +53,7 @@ export const DEFAULT_RULES: Record<RuleId, RuleSetting> = {
   length_over_max: 'warning',
   // Ratio-based and therefore approximate; asked for rather than assumed.
   length_overflow: 'off',
+  unreadable_file: 'error',
 };
 
 export interface Finding {
@@ -90,6 +92,8 @@ export interface LocaleBundle {
   locale: string;
   files: string[];
   skipped: Array<{ file: string; reason: string }>;
+  /** Files that could not be parsed. One bad file must not hide the rest. */
+  unreadable: Array<{ file: string; message: string }>;
   leaves: Map<string, Leaf>;
   /** Keys that hold an object or array rather than a value. */
   containers: Set<string>;

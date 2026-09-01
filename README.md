@@ -44,6 +44,7 @@ errors
 | `icu_syntax_error` | error | Malformed ICU message — throws at format time |
 | `plural_missing_category` | warning | Plural lacks a form the target language requires |
 | `plural_extra_category` | warning | Plural branch the target language never selects |
+| `plural_needs_placeholder` | warning | Source form names its quantity in words; the target's category covers more numbers than that |
 | `plural_selector_lost` | warning | Laravel `a|b` selection flattened to one form |
 | `dnt_violation` | warning | A do-not-translate token did not survive |
 | `glossary_violation` | warning | A glossary term rendered with an unapproved word |
@@ -269,6 +270,36 @@ Laravel's `a|b` and `{0} none|[1,*] many` selection is its own mechanism, not
 CLDR, so it is not judged against CLDR categories. The one unambiguous failure —
 a source that selects between forms translated as a single form — is reported as
 `plural_selector_lost`.
+
+### When the source itself is not enough
+
+`one` does not mean one everywhere. English `one` is exactly 1, so English can
+write
+
+```yaml
+less_than_x_minutes:
+  one: less than a minute
+  other: less than %{count} minutes
+```
+
+and be complete. Bosnian `one` also covers 21, 31 and 41; Slovenian `one` also
+covers 101; Scottish Gaelic `one` also covers 11. A translation that copies the
+English shape — *manje od minute*, *manj kot ena minuta* — then tells a Bosnian
+reader that twenty-one minutes is less than one.
+
+No comparison against the source can find this, because nothing is missing
+relative to the source: the source form is correct for its own language and
+insufficient for another. `plural_needs_placeholder` reports it, naming the
+numbers that break:
+
+```
+bs  ….less_than_x_minutes.one  %{count} dropped, but one in bs also covers 21, 31, 41
+```
+
+Only quantities above one count. Several languages — French, Hindi, Persian —
+put 0 in `one` as well, but that is a fact about agreement rather than about
+quantity: zero minutes really is less than a minute. Requiring a count there
+would report a dozen locales for nothing.
 
 ## Placeholder syntaxes
 
@@ -512,7 +543,10 @@ those findings are left for a human. That single rule picks the set:
 It leaves out `identical_to_source` — often correct, since "Email" really is
 "Email" in French, and forcing a change would make it worse — along with
 `plural_extra_category` and `plural_selector_lost`, which the single-string
-validator does not check and therefore could not confirm.
+validator does not check and therefore could not confirm. It also leaves out
+`plural_needs_placeholder` for the same reason turned inside out: the validator
+compares a proposal against the source, and there the source is the thing that
+falls short.
 
 A repair is sent with the wording someone already chose and the exact findings
 against it, and asked to change only what those require:

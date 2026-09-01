@@ -44,6 +44,60 @@ export function categoriesFor(locale: string): Set<string> | null {
   return result;
 }
 
+/**
+ * Which integers a locale assigns to each plural category.
+ *
+ * 0..200 is enough to separate the cases that matter: Scottish Gaelic `one`
+ * picks up 11, Russian `one` picks up 21 and 31, Welsh `zero` takes 0 while its
+ * `one` is only 1. Further out the patterns repeat.
+ */
+const members = new Map<string, Map<string, Set<number>> | null>();
+
+function membersFor(locale: string): Map<string, Set<number>> | null {
+  const cached = members.get(locale);
+  if (cached !== undefined) return cached;
+
+  let result: Map<string, Set<number>> | null = null;
+  // categoriesFor already refuses locales Intl silently substitutes for.
+  if (categoriesFor(locale) !== null) {
+    const rules = new Intl.PluralRules(locale.replace(/_/g, '-'), { type: 'cardinal' });
+    result = new Map();
+    for (let n = 0; n <= 200; n++) {
+      const category = rules.select(n);
+      let set = result.get(category);
+      if (!set) {
+        set = new Set();
+        result.set(category, set);
+      }
+      set.add(n);
+    }
+  }
+
+  members.set(locale, result);
+  return result;
+}
+
+/**
+ * The numbers `category` covers in `target` but not in `source`, or null when
+ * either locale is unknown.
+ *
+ * This is the difference between a phrase that can name its quantity in words
+ * and one that cannot. English `one` is exactly 1, so "less than a minute"
+ * says everything; Scottish Gaelic `one` also covers 11, where the same
+ * sentence would claim eleven minutes is less than one.
+ */
+export function categoryReachesFurther(
+  source: string,
+  target: string,
+  category: string,
+): number[] | null {
+  const from = membersFor(source)?.get(category);
+  const to = membersFor(target)?.get(category);
+  if (!from || !to) return null;
+  const beyond = [...to].filter((n) => !from.has(n));
+  return beyond.length > 0 ? beyond : null;
+}
+
 // ---------------------------------------------------------------------------
 // ICU MessageFormat
 // ---------------------------------------------------------------------------

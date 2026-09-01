@@ -193,6 +193,52 @@ console.log('\n=== pipe segments are alternatives, not a sentence ===');
   for (const f of lost) console.log(`       ${f.locale}  ${f.key}  ${f.detail}`);
 }
 
+// ---------------------------------------------------------------------------
+
+rmSync(ROOT, { recursive: true, force: true });
+mkdirSync(`${ROOT}/locales`, { recursive: true });
+
+// The source form is complete for its own language and incomplete for others,
+// so nothing is missing relative to it and no other rule looks here.
+writeFileSync(
+  `${ROOT}/locales/en.json`,
+  JSON.stringify(
+    { less_than_x_minutes: { one: 'less than a minute', other: 'less than %{count} minutes' } },
+    null,
+    2,
+  ) + '\n',
+);
+const forms = {
+  // one also covers 21, 31, 41 — "manje od minute" claims 21 minutes is under one
+  bs: 'manje od minute',
+  // one also covers 101
+  sl: 'manj kot ena minuta',
+  // one is exactly 1, so the phrase says everything there is to say
+  de: 'weniger als eine Minute',
+  // one also covers 0, which is a fact about agreement: zero minutes really is
+  // less than a minute
+  fr: "moins d'une minute",
+  // one covers 1 and 11, and this one kept the count
+  gd: 'nas lugha na %{count} mhionaid',
+};
+for (const [locale, one] of Object.entries(forms)) {
+  writeFileSync(
+    `${ROOT}/locales/${locale}.json`,
+    JSON.stringify({ less_than_x_minutes: { one, other: 'x %{count} y' } }, null, 2) + '\n',
+  );
+}
+
+console.log('\n=== a form whose category reaches further than the source can say ===');
+{
+  const hits = findings([]).filter((f) => f.rule === 'plural_needs_placeholder');
+  const locales = hits.map((f) => f.locale).sort();
+  const ok = locales.join(',') === 'bs,sl';
+  if (!ok) failed++;
+  console.log(`${ok ? 'ok  ' : 'FAIL'} only the categories that reach past one are reported`);
+  if (!ok) console.log(`       got ${JSON.stringify(locales)}, expected ["bs","sl"]`);
+  for (const f of hits) console.log(`       ${f.locale}  ${f.detail}`);
+}
+
 rmSync(ROOT, { recursive: true, force: true });
 
 console.log(failed === 0 ? '\nall placeholder checks passed' : `\n${failed} check(s) failed`);

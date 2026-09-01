@@ -14,6 +14,7 @@ export const RULE_IDS = [
   'plural_missing_category',
   'plural_extra_category',
   'plural_selector_lost',
+  'plural_needs_placeholder',
   'dnt_violation',
   'glossary_violation',
   'inconsistent_translation',
@@ -43,6 +44,11 @@ export const DEFAULT_RULES: Record<RuleId, RuleSetting> = {
   plural_missing_category: 'warning',
   plural_extra_category: 'warning',
   plural_selector_lost: 'warning',
+  // The source form can drop a placeholder its own language does not need —
+  // English `one` means exactly 1, so "less than a minute" is complete. A
+  // target whose `one` also covers 11 cannot copy that, and no other rule looks
+  // for it, because nothing is missing relative to the source.
+  plural_needs_placeholder: 'warning',
   dnt_violation: 'warning',
   glossary_violation: 'warning',
   // Reusing one wording for a repeated source string is often deliberate, so

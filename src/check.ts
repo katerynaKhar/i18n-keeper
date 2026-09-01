@@ -16,6 +16,7 @@ import { diffPlaceholders, extractPlaceholders } from './placeholders.js';
 import {
   CATEGORY_NAMES,
   categoriesFor,
+  categoryReachesFurther,
   pipeSegments,
   pluralGroups,
   scanIcu,
@@ -138,6 +139,19 @@ function pluralNeedsPlaceholder(
   const split = splitPluralSuffix(key);
   if (!split) return false;
 
+  const elsewhere = groupPlaceholders(config, source, split);
+  if (elsewhere.size === 0) return false;
+
+  // `extra` labels carry a ` x2` suffix when a placeholder repeats.
+  return extra.every((label) => elsewhere.has(label.replace(/ x\d+$/, '')));
+}
+
+/** What the source interpolates in the other forms of the same plural group. */
+function groupPlaceholders(
+  config: Config,
+  source: LocaleBundle,
+  split: { base: string; category: string; separator: '_' | '.' },
+): Set<string> {
   const elsewhere = new Set<string>();
   for (const category of CATEGORY_NAMES) {
     if (category === split.category) continue;
@@ -147,10 +161,7 @@ function pluralNeedsPlaceholder(
       elsewhere.add(label);
     }
   }
-  if (elsewhere.size === 0) return false;
-
-  // `extra` labels carry a ` x2` suffix when a placeholder repeats.
-  return extra.every((label) => elsewhere.has(label.replace(/ x\d+$/, '')));
+  return elsewhere;
 }
 
 function checkLocale(
@@ -278,6 +289,32 @@ function checkLocale(
     ) {
       push(findings, config, 'placeholder_extra', target.locale, key, targetLeaf.file,
         `${extra.join(', ')} not in source`);
+    }
+
+    // Nothing is missing relative to the source here, which is exactly why no
+    // other rule looks: the source form is complete for its own language and
+    // incomplete for this one.
+    const pluralForm = splitPluralSuffix(key);
+    if (pluralForm) {
+      const beyond = categoryReachesFurther(
+        config.sourceLocale,
+        target.locale,
+        pluralForm.category,
+      );
+      // Only quantities above one. A category that additionally takes 0 —
+      // French, Hindi, Persian all put it in `one` — is a fact about agreement,
+      // not about quantity: zero minutes really is less than a minute. Eleven
+      // of them is not.
+      const quantities = beyond?.filter((n) => n > 1) ?? [];
+      if (quantities.length > 0) {
+        const needed = [...groupPlaceholders(config, source, pluralForm)].filter(
+          (label) => !sourcePlaceholders.has(label) && !targetPlaceholders.has(label),
+        );
+        if (needed.length > 0) {
+          push(findings, config, 'plural_needs_placeholder', target.locale, key, targetLeaf.file,
+            `${needed.join(', ')} dropped, but ${pluralForm.category} in ${target.locale} also covers ${quantities.slice(0, 3).join(', ')}`);
+        }
+      }
     }
 
     if (glossary) {

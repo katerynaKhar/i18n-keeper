@@ -14,6 +14,7 @@ import {
 import { judge, type Memory } from './memory.js';
 import { diffPlaceholders, extractPlaceholders } from './placeholders.js';
 import {
+  CATEGORY_NAMES,
   categoriesFor,
   pipeSegments,
   pluralGroups,
@@ -50,6 +51,13 @@ function push(
 
 function list(categories: Iterable<string>): string {
   return [...categories].join('/');
+}
+
+/** Drops the multiplicity, leaving which names were used but not how often. */
+function distinct(counts: Map<string, number>): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const label of counts.keys()) out.set(label, 1);
+  return out;
 }
 
 /** ICU plural branches must cover the categories the target language actually has. */
@@ -105,6 +113,44 @@ function pluralExpansion(
   }
 
   return used.size > 0 ? used : null;
+}
+
+/**
+ * Whether a target plural form is entitled to a placeholder its own source form
+ * does without.
+ *
+ * Every form of one message is rendered from the same arguments, so a
+ * placeholder the source uses in any form of the group will be substituted in
+ * all of them. English writes `less_than_x_minutes.one` as "less than a minute"
+ * because English `one` means exactly 1; Scottish Gaelic `one` also covers 11
+ * and has to keep the count, and Afrikaans may keep it simply because "less
+ * than 1 minute" reads better. Neither is an invented placeholder.
+ *
+ * What this does not excuse is a name the source never uses anywhere in the
+ * group — that one really would render as literal text.
+ */
+function pluralNeedsPlaceholder(
+  config: Config,
+  source: LocaleBundle,
+  key: string,
+  extra: string[],
+): boolean {
+  const split = splitPluralSuffix(key);
+  if (!split) return false;
+
+  const elsewhere = new Set<string>();
+  for (const category of CATEGORY_NAMES) {
+    if (category === split.category) continue;
+    const leaf = source.leaves.get(`${split.base}${split.separator}${category}`);
+    if (!leaf) continue;
+    for (const label of extractPlaceholders(leaf.value, config.placeholderSyntaxes).keys()) {
+      elsewhere.add(label);
+    }
+  }
+  if (elsewhere.size === 0) return false;
+
+  // `extra` labels carry a ` x2` suffix when a placeholder repeats.
+  return extra.every((label) => elsewhere.has(label.replace(/ x\d+$/, '')));
 }
 
 function checkLocale(
@@ -207,14 +253,29 @@ function checkLocale(
     }
 
     const sourcePlaceholders = extractPlaceholders(sourceLeaf.value, config.placeholderSyntaxes);
-    const targetPlaceholders = extractPlaceholders(targetLeaf.value, config.placeholderSyntaxes);
-    const { missing: lost, extra } = diffPlaceholders(sourcePlaceholders, targetPlaceholders);
+    const targetPlaceholders = extractPlaceholders(
+      targetLeaf.value,
+      config.placeholderSyntaxes,
+      sourcePlaceholders.keys(),
+    );
+    // Laravel's pipe segments are alternatives: exactly one of them is ever
+    // rendered. Japanese collapsing three English segments into one has not
+    // lost two copies of :count, so the names are compared without their
+    // counts — losing the name altogether is still reported.
+    const alternatives = laravel && pipeSegments(sourceLeaf.value) > 1;
+    const { missing: lost, extra } = diffPlaceholders(
+      alternatives ? distinct(sourcePlaceholders) : sourcePlaceholders,
+      alternatives ? distinct(targetPlaceholders) : targetPlaceholders,
+    );
 
     if (lost.length > 0) {
       push(findings, config, 'placeholder_missing', target.locale, key, targetLeaf.file,
         `${lost.join(', ')} lost`);
     }
-    if (extra.length > 0) {
+    if (
+      extra.length > 0 &&
+      !pluralNeedsPlaceholder(config, source, key, extra)
+    ) {
       push(findings, config, 'placeholder_extra', target.locale, key, targetLeaf.file,
         `${extra.join(', ')} not in source`);
     }

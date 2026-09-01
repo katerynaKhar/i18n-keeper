@@ -285,6 +285,34 @@ language files, a `composer.json`, or a `lang/` directory — because Laravel
 keeps string-keyed translations in `lang/xx.json`, placeholders and all, so the
 file extension alone would miss them. `--syntax` overrides the choice.
 
+### Compared the way the framework substitutes
+
+A placeholder is judged against how it will actually be replaced at runtime,
+not against how it looks.
+
+Laravel substitutes with `strtr()`, which needs no word boundary on either
+side. Somali writes `:attributeka` and Shona writes `ne:terms_of_service`; both
+render correctly, because `strtr` replaces the name it finds and leaves the rest
+of the word alone. Read as plain tokens, each of those is reported twice — once
+as a lost `:attribute` and once as an invented `:attributeka`. So when the names
+the source offers are known, a match is cut back to the longest of them it
+contains, exactly as `strtr` would. A name the source never offers still has to
+stand on its own, or it is prose rather than a placeholder.
+
+Laravel's pipe segments are alternatives: one of them is rendered, never all
+three. A locale that collapses `one|few|other` into a single form has not lost
+two copies of `:count`, so for those strings the names are compared without
+their multiplicity.
+
+Every form of one plural message is rendered from the same arguments, so a
+placeholder used anywhere in the group can be used in any form of it. English
+writes `less_than_x_minutes.one` as "less than a minute" — English `one` means
+exactly 1 — while Scottish Gaelic `one` also covers 11 and has to keep the
+count. That is a requirement of the language, not an invention.
+
+Each of these was found by running the linter over a real project and reading
+what it said, which is the only way any of them could have been found.
+
 ## Formats and layouts
 
 JSON, Laravel PHP, gettext and YAML, in either layout, auto-detected:

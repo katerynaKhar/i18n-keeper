@@ -199,9 +199,10 @@ export function validate(
 
   if (proposed.trim() === '') return ['empty translation'];
 
+  const sourcePlaceholders = extractPlaceholders(job.source, config.placeholderSyntaxes);
   const lost = diffPlaceholders(
-    extractPlaceholders(job.source, config.placeholderSyntaxes),
-    extractPlaceholders(proposed, config.placeholderSyntaxes),
+    sourcePlaceholders,
+    extractPlaceholders(proposed, config.placeholderSyntaxes, sourcePlaceholders.keys()),
   );
   if (lost.missing.length > 0) problems.push(`placeholders lost: ${lost.missing.join(', ')}`);
   if (lost.extra.length > 0) problems.push(`placeholders invented: ${lost.extra.join(', ')}`);

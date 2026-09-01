@@ -67,9 +67,57 @@ function maskSpans(text: string, spans: Array<[number, number]>): string {
   return chars.join('');
 }
 
-/** Returns a multiset of placeholder labels: `{name}` twice is not the same as once. */
-export function extractPlaceholders(text: string, syntaxes: string[]): Map<string, number> {
+/**
+ * Laravel substitutes with `strtr()`, which needs no word boundary, so a
+ * translation may glue a suffix straight onto the token and still render: the
+ * Somali definite article in `:attributeka`, the Amharic one in `:attributeቱ`.
+ * The greedy pattern above reads the whole run as the name, which reports one
+ * correct string as both a lost `:attribute` and an invented `:attributeka`.
+ *
+ * When the names the source actually offers are known, the match is cut back to
+ * the longest of them it starts with — the same choice `strtr` makes.
+ */
+function knownNames(known: Iterable<string> | undefined): Set<string> | null {
+  if (!known) return null;
+  const names = new Set<string>();
+  for (const label of known) {
+    const name = label.replace(/^:/, '').toLowerCase();
+    if (/^[a-z][\w]*$/.test(name)) names.add(name);
+  }
+  return names.size > 0 ? names : null;
+}
+
+/**
+ * `strtr` needs no boundary on either side, so Shona's `ne:terms_of_service`
+ * substitutes just as well as a token standing alone. The guarded pattern above
+ * cannot see it. This one is used only when the source names are known, so that
+ * anything it turns up can still be required to be one of them.
+ */
+const LARAVEL_ANYWHERE = /:([a-zA-Z][\w]*)/g;
+
+function longestKnownPrefix(identifier: string, names: Set<string>): string | null {
+  const lower = identifier.toLowerCase();
+  let best: string | null = null;
+  for (const name of names) {
+    if (lower.startsWith(name) && (best === null || name.length > best.length)) best = name;
+  }
+  return best;
+}
+
+/**
+ * Returns a multiset of placeholder labels: `{name}` twice is not the same as once.
+ *
+ * `known` carries the labels found in the source string. It only affects the
+ * Laravel syntax, where the boundary of a name cannot be read off the target
+ * text alone.
+ */
+export function extractPlaceholders(
+  text: string,
+  syntaxes: string[],
+  known?: Iterable<string>,
+): Map<string, number> {
   const counts = new Map<string, number>();
+  const laravelNames = knownNames(known);
   let masked = text;
 
   for (const id of ORDER) {
@@ -77,7 +125,8 @@ export function extractPlaceholders(text: string, syntaxes: string[]): Map<strin
     const spec = PATTERNS[id];
     if (!spec) continue;
 
-    const re = new RegExp(spec.re.source, spec.re.flags);
+    const permissive = id === 'laravel' && laravelNames !== null;
+    const re = new RegExp(permissive ? LARAVEL_ANYWHERE.source : spec.re.source, spec.re.flags);
     const spans: Array<[number, number]> = [];
     let m: RegExpExecArray | null;
 
@@ -86,7 +135,17 @@ export function extractPlaceholders(text: string, syntaxes: string[]): Map<strin
         re.lastIndex++;
         continue;
       }
-      const label = spec.label(m);
+      let label = spec.label(m);
+      if (permissive) {
+        const name = longestKnownPrefix(m[1]!, laravelNames!);
+        if (name !== null) {
+          label = `:${name}`;
+        } else if (/[\w:]/.test(masked[m.index - 1] ?? '')) {
+          // Not a name the source offers, and glued to the word before it:
+          // prose like "Warning:Important", not a placeholder.
+          continue;
+        }
+      }
       counts.set(label, (counts.get(label) ?? 0) + 1);
       spans.push([m.index, m.index + m[0].length]);
     }

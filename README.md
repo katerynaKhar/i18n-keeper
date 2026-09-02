@@ -5,13 +5,16 @@
 [![node](https://img.shields.io/node/v/@katerynakhar/i18n-keeper)](https://nodejs.org)
 
 Deterministic linter for JSON, Laravel PHP, gettext and YAML locale files, as a
-CLI and an MCP server. No LLM, no network, no API key — every finding is mechanically
-verifiable, which is the point: you can trust the report in languages you do not
-read.
+CLI, an MCP server and an ESLint plugin. No LLM, no network, no API key — every
+finding is mechanically verifiable, which is the point: you can trust the report
+in languages you do not read.
 
 ```bash
 npx @katerynakhar/i18n-keeper check
 ```
+
+For the same checks inside ESLint, reported on the line the key is written on,
+see [eslint-plugin-i18n-keeper](https://github.com/katerynaKhar/eslint-plugin-i18n-keeper).
 
 ```
 i18n check · source: en · 16 keys · locales
